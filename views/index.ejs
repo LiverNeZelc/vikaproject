@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArtShop - Материалы для изобразительного искусства</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="logo">
+          <h1>🎨 ArtShop</h1>
+        </div>
+        <nav class="nav">
+          <a href="/" class="nav-link active">Главная</a>
+          <a href="/catalog" class="nav-link">Каталог</a>
+        </nav>
+        <div class="header-actions">
+          <button class="cart-btn" onclick="showCartModal()" style="background: none; border: none; cursor: pointer;">
+            <span class="cart-icon">🛒</span>
+            <span class="cart-count">0</span>
+          </button>
+          <button class="account-btn" onclick="showCabinetModal()" style="background: none; border: none; cursor: pointer;">👤 Личный кабинет</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Slider Section -->
+  <section class="slider-section">
+    <div class="slider">
+      <div class="slide active" style="background-image: url('/images/slide1.jpg')">
+        <div class="slide-overlay"></div>
+      </div>
+      <div class="slide" style="background-image: url('/images/slide2.jpg')">
+        <div class="slide-overlay"></div>
+      </div>
+      <div class="slide" style="background-image: url('/images/slide3.jpg')">
+        <div class="slide-overlay"></div>
+      </div>
+      <div class="slide" style="background-image: url('/images/slide4.jpg')">
+        <div class="slide-overlay"></div>
+      </div>
+
+      <div class="slider-content">
+        <h2 class="slider-title">Раскройте свой творческий потенциал</h2>
+        <p class="slider-subtitle">Профессиональные материалы для художников</p>
+        <a href="/catalog" class="slider-btn">Перейти в каталог</a>
+      </div>
+
+      <button class="slider-btn-prev" onclick="changeSlide(-1)">❮</button>
+      <button class="slider-btn-next" onclick="changeSlide(1)">❯</button>
+
+      <div class="slider-dots">
+        <span class="dot active" onclick="currentSlide(0)"></span>
+        <span class="dot" onclick="currentSlide(1)"></span>
+        <span class="dot" onclick="currentSlide(2)"></span>
+        <span class="dot" onclick="currentSlide(3)"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Reviews Section -->
+  <section class="reviews-section">
+    <div class="container">
+      <h2 class="section-title">Отзывы наших клиентов</h2>
+      <div class="reviews-grid">
+        <div class="review-card">
+          <div class="review-header">
+            <span class="review-author">Мария Петрова</span>
+            <span class="review-rating">⭐⭐⭐⭐⭐</span>
+          </div>
+          <p class="review-text">Отличное качество материалов! Краски яркие и долго держат цвет. Доставка быстрая, упаковка надежная.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-header">
+            <span class="review-author">Иван Сидоров</span>
+            <span class="review-rating">⭐⭐⭐⭐⭐</span>
+          </div>
+          <p class="review-text">Огромный выбор кистей и холстов. Цены адекватные, особенно на скидках. Рекомендую всем художникам!</p>
+        </div>
+        <div class="review-card">
+          <div class="review-header">
+            <span class="review-author">Анна Колесникова</span>
+            <span class="review-rating">⭐⭐⭐⭐</span>
+          </div>
+          <p class="review-text">Очень хороший магазин. Есть все необходимое для живописи. Персонал помог с выбором материалов.</p>
+        </div>
+        <div class="review-card">
+          <div class="review-header">
+            <span class="review-author">Дмитрий Романов</span>
+            <span class="review-rating">⭐⭐⭐⭐⭐</span>
+          </div>
+          <p class="review-text">Профессиональный подход к обслуживанию. Все товары оригинальные. Спасибо за удобный сайт!</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Checkout Modal -->
+  <div id="checkoutModal" class="modal">
+    <div class="modal-content modal-checkout">
+      <span class="modal-close" onclick="closeCheckoutModal()">&times;</span>
+      <h2>Оформление заказа</h2>
+
+      <form id="checkoutForm" onsubmit="handleCheckout(event)">
+        <div class="checkout-section">
+          <h3>Номер заказа: <span id="orderNumber">#00001</span></h3>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Товары</h3>
+          <div id="checkoutItems" class="checkout-items"></div>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Адрес доставки</h3>
+          <textarea id="deliveryAddress" name="delivery_address" required placeholder="Введите адрес доставки"></textarea>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Способ оплаты</h3>
+          <select id="paymentCard" name="payment_card" required>
+            <option value="">Выберите карту</option>
+          </select>
+        </div>
+
+        <div class="checkout-total">
+          <div class="total-row">
+            <span>Сумма заказа:</span>
+            <span id="checkoutTotal">0 BYN</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-secondary" onclick="closeCheckoutModal()">Отмена</button>
+          <button type="submit" class="modal-btn modal-btn-primary">Оплатить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/js/index.js"></script>
+</body>
+</html>

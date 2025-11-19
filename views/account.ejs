@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Личный кабинет - ArtShop</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/account.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="logo">
+          <h1>🎨 ArtShop</h1>
+        </div>
+        <nav class="nav">
+          <a href="/" class="nav-link">Главная</a>
+          <a href="/catalog" class="nav-link">Каталог</a>
+        </nav>
+        <div class="header-actions">
+          <a href="/" class="account-btn">👤 На главную</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="account-main">
+    <div class="container">
+      <div class="auth-container">
+        <!-- Login Form -->
+        <div class="auth-box" id="loginBox">
+          <h2>Вход в аккаунт</h2>
+          <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+              <label for="loginEmail">Email:</label>
+              <input type="email" id="loginEmail" name="email" required>
+            </div>
+            <div class="form-group">
+              <label for="loginPassword">Пароль:</label>
+              <input type="password" id="loginPassword" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Войти</button>
+          </form>
+          <p class="auth-switch">
+            Нет аккаунта? <a href="#" onclick="toggleForms()">Зарегистрироваться</a>
+          </p>
+        </div>
+
+        <!-- Register Form -->
+        <div class="auth-box hidden" id="registerBox">
+          <h2>Регистрация</h2>
+          <form id="registerForm" onsubmit="handleRegister(event)">
+            <div class="form-group">
+              <label for="regEmail">Email:</label>
+              <input type="email" id="regEmail" name="email" required>
+            </div>
+            <div class="form-group">
+              <label for="regFirstName">Имя:</label>
+              <input type="text" id="regFirstName" name="first_name" required>
+            </div>
+            <div class="form-group">
+              <label for="regLastName">Фамилия:</label>
+              <input type="text" id="regLastName" name="last_name" required>
+            </div>
+            <div class="form-group">
+              <label for="regPhone">Телефон:</label>
+              <input type="tel" id="regPhone" name="phone">
+            </div>
+            <div class="form-group">
+              <label for="regPassword">Пароль:</label>
+              <input type="password" id="regPassword" name="password" required>
+            </div>
+            <div class="form-group">
+              <label for="regPasswordConfirm">Подтвердить пароль:</label>
+              <input type="password" id="regPasswordConfirm" name="password_confirm" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Зарегистрироваться</button>
+          </form>
+          <p class="auth-switch">
+            Уже есть аккаунт? <a href="#" onclick="toggleForms()">Войти</a>
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>О магазине</h3>
+          <p>ArtShop - ваш верный помощник в мире изобразительного искусства. Более 10 лет мы поставляем качественные материалы художникам.</p>
+        </div>
+        <div class="footer-section">
+          <h3>Быстрые ссылки</h3>
+          <ul>
+            <li><a href="/">Главная</a></li>
+            <li><a href="/catalog">Каталог</a></li>
+            <li><a href="/about">О нас</a></li>
+            <li><a href="/contacts">Контакты</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Контакты</h3>
+          <p>📧 info@artshop.ru</p>
+          <p>📞 +7 (800) 123-45-67</p>
+          <p>📍 ул. Искусства, 42, Минск</p>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2025 ArtShop. Все права защищены.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/account-page.js"></script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Каталог - ArtShop</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container">
+      <div class="header-content">
+        <div class="logo">
+          <h1>🎨 ArtShop</h1>
+        </div>
+        <nav class="nav">
+          <a href="/" class="nav-link">Главная</a>
+          <a href="/catalog" class="nav-link active">Каталог</a>
+        </nav>
+        <div class="header-actions">
+          <button class="cart-btn" onclick="showCartModal()" style="background: none; border: none; cursor: pointer;">
+            <span class="cart-icon">🛒</span>
+            <span class="cart-count">0</span>
+          </button>
+          <button class="account-btn" onclick="showCabinetModal()" style="background: none; border: none; cursor: pointer;">👤 Личный кабинет</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Search Section -->
+  <section class="search-section">
+    <div class="container">
+      <div class="search-box">
+        <input 
+          type="text" 
+          id="searchInput" 
+          class="search-input" 
+          placeholder="Поиск товаров..."
+          autocomplete="off"
+        >
+        <span class="search-icon">🔍</span>
+      </div>
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </section>
+
+  <!-- Products Section -->
+  <section class="products-section">
+    <div class="container">
+      <h2 class="section-title">Каталог товаров</h2>
+      
+      <div class="filters">
+        <select id="categoryFilter" class="filter-select">
+          <option value="">Все категории</option>
+          <option value="paints">Краски</option>
+          <option value="brushes">Кисти</option>
+          <option value="canvas">Холсты</option>
+          <option value="paper">Бумага</option>
+          <option value="tools">Инструменты</option>
+        </select>
+        <select id="sortSelect" class="filter-select">
+          <option value="newest">Новые</option>
+          <option value="price-asc">Цена: возрастание</option>
+          <option value="price-desc">Цена: убывание</option>
+        </select>
+      </div>
+
+      <div class="products-grid" id="productsGrid">
+        <!-- Products will be loaded here by JavaScript -->
+      </div>
+    </div>
+  </section>
+
+  <!-- Cart Modal -->
+  <div id="cartModal" class="modal">
+    <div class="modal-content modal-cart">
+      <span class="modal-close" onclick="closeCartModal()">&times;</span>
+      <h2>Корзина покупок</h2>
+      
+      <div id="cartItems" class="cart-items">
+        <!-- Cart items will be loaded here -->
+      </div>
+      
+      <div class="cart-summary">
+        <div class="cart-total">
+          <strong>Итого:</strong>
+          <strong id="cartTotal">0 BYN</strong>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-secondary" onclick="closeCartModal()">Продолжить покупки</button>
+        <button class="modal-btn modal-btn-primary" id="checkoutBtn" onclick="goToCheckout()">Оформить заказ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Checkout Modal -->
+  <div id="checkoutModal" class="modal">
+    <div class="modal-content modal-checkout">
+      <span class="modal-close" onclick="closeCheckoutModal()">&times;</span>
+      <h2>Оформление заказа</h2>
+
+      <form id="checkoutForm" onsubmit="handleCheckout(event)">
+        <div class="checkout-section">
+          <h3>Номер заказа: <span id="orderNumber">#00001</span></h3>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Товары</h3>
+          <div id="checkoutItems" class="checkout-items"></div>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Адрес доставки</h3>
+          <textarea id="deliveryAddress" name="delivery_address" required placeholder="Введите адрес доставки"></textarea>
+        </div>
+
+        <div class="checkout-section">
+          <h3>Способ оплаты</h3>
+          <select id="paymentCard" name="payment_card" required>
+            <option value="">Выберите карту</option>
+          </select>
+        </div>
+
+        <div class="checkout-total">
+          <div class="total-row">
+            <span>Сумма заказа:</span>
+            <span id="checkoutTotal">0 BYN</span>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-secondary" onclick="closeCheckoutModal()">Отмена</button>
+          <button type="submit" class="modal-btn modal-btn-primary">Оплатить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3>О магазине</h3>
+          <p>ArtShop - ваш верный помощник в мире изобразительного искусства. Более 10 лет мы поставляем качественные материалы художникам.</p>
+        </div>
+        <div class="footer-section">
+          <h3>Быстрые ссылки</h3>
+          <ul>
+            <li><a href="/">Главная</a></li>
+            <li><a href="/catalog">Каталог</a></li>
+            <li><a href="/about">О нас</a></li>
+            <li><a href="/contacts">Контакты</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Контакты</h3>
+          <p>📧 info@artshop.ru</p>
+          <p>📞 +7 (800) 123-45-67</p>
+          <p>📍 ул. Искусства, 42, Минск</p>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2025 ArtShop. Все права защищены.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/catalog.js"></script>
+</body>
+</html>
