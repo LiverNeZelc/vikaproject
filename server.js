@@ -168,10 +168,25 @@ app.post('/api/cart/merge', async (req, res) => {
         cartId = cartResult.rows[0].id_cart;
       }
 
-      await pool.query(
-        'INSERT INTO cart_items (id_cart, id_product, quantity) VALUES ($1, $2, $3) ON CONFLICT DO UPDATE SET quantity = quantity + $3',
-        [cartId, item.id, item.quantity]
+      // Проверяем, есть ли товар в корзине
+      const existingItem = await pool.query(
+        'SELECT quantity FROM cart_items WHERE id_cart = $1 AND id_product = $2',
+        [cartId, item.id]
       );
+
+      if (existingItem.rows.length > 0) {
+        // Если товар есть, увеличиваем количество
+        await pool.query(
+          'UPDATE cart_items SET quantity = quantity + $1 WHERE id_cart = $2 AND id_product = $3',
+          [item.quantity, cartId, item.id]
+        );
+      } else {
+        // Если товара нет, добавляем его
+        await pool.query(
+          'INSERT INTO cart_items (id_cart, id_product, quantity) VALUES ($1, $2, $3)',
+          [cartId, item.id, item.quantity]
+        );
+      }
     }
 
     res.json({ success: true });
@@ -357,7 +372,7 @@ app.get('/api/orders/:userId', async (req, res) => {
 
 app.post('/api/orders/create', async (req, res) => {
   try {
-    const { user_id, card_id, delivery_address } = req.body;
+    const { user_id, card_id, delivery_address, bonus_used } = req.body;
 
     // Получаем информацию о карте
     const cardResult = await pool.query(
@@ -386,18 +401,23 @@ app.post('/api/orders/create', async (req, res) => {
       totalAmount += item.price * item.quantity;
     });
 
+    // Вычисляем скидку от бонусов (1 бонус = 0.1 BYN)
+    const bonusDiscount = (bonus_used || 0) * 0.1;
+    const finalAmount = Math.max(0, totalAmount - bonusDiscount);
+
     // Проверяем баланс карты
-    if (cardResult.rows[0].balance < totalAmount) {
+    if (cardResult.rows[0].balance < finalAmount) {
       return res.status(400).json({ message: 'Недостаточно средств на карте' });
     }
 
-    const bonusEarned = (totalAmount * 0.05 * 10).toFixed(2);
+    // Рассчитываем бонусы: 20% от оригинальной суммы (до скидки)
+    const bonusEarned = Math.round((totalAmount * 0.2 * 10)); // в "бонус-единицах"
 
     const orderResult = await pool.query(`
       INSERT INTO orders (id_user, total_amount, delivery_address, payment_status, bonus_earned, status)
       VALUES ($1, $2, $3, 'paid', $4, 'pending')
       RETURNING id_order, created_at
-    `, [user_id, totalAmount, delivery_address, bonusEarned]);
+    `, [user_id, finalAmount, delivery_address, bonusEarned]);
 
     const orderId = orderResult.rows[0].id_order;
 
@@ -411,12 +431,12 @@ app.post('/api/orders/create', async (req, res) => {
     // Вычитаем сумму из баланса карты
     await pool.query(`
       UPDATE cards SET balance = balance - $1 WHERE id_card = $2
-    `, [totalAmount, card_id]);
+    `, [finalAmount, card_id]);
 
-    // Добавляем бонусы пользователю
+    // Обновляем бонусы пользователя: добавляем заработанные, вычитаем использованные
     await pool.query(`
-      UPDATE users SET bonus = bonus + $1 WHERE id_user = $2
-    `, [bonusEarned, user_id]);
+      UPDATE users SET bonus = bonus + $1 - $2 WHERE id_user = $3
+    `, [bonusEarned, bonus_used || 0, user_id]);
 
     await pool.query(`
       DELETE FROM cart_items WHERE id_cart IN (
@@ -429,7 +449,10 @@ app.post('/api/orders/create', async (req, res) => {
       order_id: orderId,
       order: {
         id_order: orderId,
-        total_amount: totalAmount,
+        total_amount: finalAmount,
+        original_amount: totalAmount,
+        bonus_used: bonus_used || 0,
+        bonus_earned: bonusEarned,
         delivery_address: delivery_address,
         status: 'pending',
         items_count: cartResult.rows.length,
@@ -447,13 +470,35 @@ app.get('/api/cards/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await pool.query(
-      'SELECT id_card, card_number, balance FROM cards WHERE id_user = $1',
+      'SELECT id_card, card_number, balance, created_at FROM cards WHERE id_user = $1 ORDER BY created_at DESC',
       [userId]
     );
     res.json(result.rows);
   } catch (error) {
     console.error('Ошибка получения карт:', error);
     res.status(500).json({ message: 'Ошибка получения карт' });
+  }
+});
+
+// Reviews API - сохранить отзыв (id_user может быть null для гостя)
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { id_user, rating, comment } = req.body;
+    if (!rating || !comment) {
+      return res.status(400).json({ message: 'Необходимы рейтинг и комментарий' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO reviews (id_user, rating, comment, status)
+       VALUES ($1, $2, $3, 'не проверен')
+       RETURNING id_review`,
+      [id_user || null, parseInt(rating, 10), comment]
+    );
+
+    res.json({ success: true, id_review: result.rows[0].id_review });
+  } catch (error) {
+    console.error('Ошибка сохранения отзыва:', error);
+    res.status(500).json({ message: 'Ошибка сохранения отзыва' });
   }
 });
 

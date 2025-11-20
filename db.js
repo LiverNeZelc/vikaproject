@@ -104,16 +104,15 @@ const initDb = async () => {
       )
     `);
 
-    // Таблица ОТЗЫВ
+    // Таблица ОТЗЫВЫ
     await pool.query(`
       CREATE TABLE IF NOT EXISTS reviews (
         id_review SERIAL PRIMARY KEY,
-        id_user INTEGER NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
-        id_product INTEGER NOT NULL REFERENCES products(id_product) ON DELETE CASCADE,
-        rating INTEGER CHECK (rating >= 1 AND rating <= 5),
-        comment TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(id_user, id_product)
+        id_user INTEGER REFERENCES users(id_user) ON DELETE SET NULL,
+        rating INTEGER CHECK (rating >= 1 AND rating <= 5) NOT NULL,
+        comment TEXT NOT NULL,
+        status VARCHAR(50) DEFAULT 'не проверен',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
 

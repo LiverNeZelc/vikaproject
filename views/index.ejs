@@ -116,6 +116,10 @@
           <div id="checkoutItems" class="checkout-items"></div>
         </div>
 
+        <div class="checkout-section" id="bonusSection">
+          <!-- Будет заполнено JavaScript -->
+        </div>
+
         <div class="checkout-section">
           <h3>Адрес доставки</h3>
           <textarea id="deliveryAddress" name="delivery_address" required placeholder="Введите адрес доставки"></textarea>
@@ -126,12 +130,13 @@
           <select id="paymentCard" name="payment_card" required>
             <option value="">Выберите карту</option>
           </select>
+          <div id="paymentCardInfo" class="payment-card-info"></div>
         </div>
 
         <div class="checkout-total">
           <div class="total-row">
-            <span>Сумма заказа:</span>
-            <span id="checkoutTotal">0 BYN</span>
+            <span>Сумма к оплате:</span>
+            <span id="checkoutTotal" data-original-amount="0">0 BYN</span>
           </div>
         </div>
 
@@ -143,6 +148,69 @@
     </div>
   </div>
 
+  <!-- Reviews Modal -->
+  <div id="reviewModal" class="modal">
+    <div class="modal-content modal-checkout" role="dialog" aria-modal="true" aria-labelledby="reviewTitle">
+      <span class="modal-close" onclick="closeReviewModal()">&times;</span>
+      <h2 id="reviewTitle">Оставить отзыв</h2>
+
+      <form id="reviewForm" onsubmit="handleReviewSubmit(event)">
+        <div style="margin-bottom:12px;">
+          <label for="rating">Рейтинг:</label>
+          <select id="rating" required style="width:100%; padding:10px; margin-top:6px; font-family: inherit; border-radius: 8px; border: 1px solid #ddd;">
+            <option value="">Выберите</option>
+            <option value="5">5 — Отлично</option>
+            <option value="4">4 — Хорошо</option>
+            <option value="3">3 — Нормально</option>
+            <option value="2">2 — Плохо</option>
+            <option value="1">1 — Ужасно</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <label for="comment">Комментарий:</label>
+          <textarea id="comment" rows="6" placeholder="Ваш отзыв..." style="width:100%; padding:10px; margin-top:6px; font-family: inherit; border-radius: 8px; border: 1px solid #ddd; resize: vertical;" required></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="modal-btn modal-btn-secondary" onclick="closeReviewModal()">Отмена</button>
+          <button type="submit" class="modal-btn modal-btn-primary">Отправить отзыв</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <h3><a href="#" onclick="showReviewModal(); return false;" style="color:inherit; text-decoration:none;">Отзывы</a></h3>
+          <p>Поделитесь впечатлением!</p>
+        </div>
+        <div class="footer-section">
+          <h3>Быстрые ссылки</h3>
+          <ul>
+            <li><a href="/">Главная</a></li>
+            <li><a href="/catalog">Каталог</a></li>
+            <li><a href="/about">О нас</a></li>
+            <li><a href="/contacts">Контакты</a></li>
+          </ul>
+        </div>
+        <div class="footer-section">
+          <h3>Контакты</h3>
+          <p>📧 info@artshop.ru</p>
+          <p>📞 +7 (800) 123-45-67</p>
+          <p>📍 ул. Искусства, 42, Минск</p>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2025 ArtShop. Все права защищены.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/js/account.js"></script>
   <script src="/js/index.js"></script>
 </body>
 </html>

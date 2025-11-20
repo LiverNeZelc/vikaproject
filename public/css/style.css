@@ -477,16 +477,17 @@ body {
   cursor: not-allowed;
 }
 
-/* Modals */
+/* ========== MODALS ========== */
 .modal {
   display: none;
   position: fixed;
-  z-index: 9999;
-  left: 0;
   top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  overflow-y: auto;
   padding: 20px;
 }
 
@@ -497,17 +498,19 @@ body {
 }
 
 .modal-content {
+  /* было: padding: 30px; */
+  /* Увеличиваем верхний отступ, чтобы заголовок кабинета (и кнопка выхода) не пересекались с кнопкой закрытия */
   background-color: var(--white);
-  padding: 30px;
   border-radius: var(--border-radius);
-  max-height: 85vh;
-  overflow-y: auto;
-  position: relative;
-  width: 100%;
-  max-width: 600px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
   animation: slideIn 0.3s ease;
-  margin: auto;
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 600px;
+  padding: 56px 30px 30px; /* увеличен верхний padding */
+  margin: 0 auto;
 }
 
 .modal-cart {
@@ -519,19 +522,21 @@ body {
 }
 
 .modal-cabinet {
-  max-width: 750px;
+  /* контейнер-модалка (фон/обёртка) — ширина не важна, содержимое задаём ниже */
+  max-width: 100%;
 }
 
-.modal-cabinet-content {
-  max-height: 85vh;
-  width: 100%;
+.modal-cabinet .modal-content {
   max-width: 750px;
+  width: 90vw;
+  margin: 0 auto;
 }
 
+/* animation */
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(-50px);
+    transform: translateY(-20px);
   }
   to {
     opacity: 1;
@@ -540,9 +545,10 @@ body {
 }
 
 .modal-close {
+  /* немного смещаем внутрь и повышаем z-index — видна над содержимым, но не накрывает logout */
   position: absolute;
-  right: 20px;
-  top: 20px;
+  right: 16px;
+  top: 16px;
   font-size: 28px;
   font-weight: bold;
   color: #999;
@@ -551,10 +557,22 @@ body {
   border: none;
   background: none;
   padding: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20; /* выше, чем содержимое, но при этом header будет с padding-top */
 }
 
 .modal-close:hover {
   color: var(--primary-color);
+}
+
+.modal-content h2 {
+  color: var(--primary-color);
+  margin-bottom: 20px;
+  font-size: 24px;
 }
 
 /* Cart */
@@ -797,6 +815,12 @@ body {
   box-shadow: 0 5px 15px rgba(139, 90, 60, 0.3);
 }
 
+.modal-btn-primary:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .modal-btn-secondary {
   background-color: #95a5a6;
   color: var(--white);
@@ -815,6 +839,9 @@ body {
   margin-bottom: 25px;
   padding-bottom: 15px;
   border-bottom: 2px solid #e0e0e0;
+  padding-top: 8px; /* небольшой дополнительный отступ сверху */
+  position: relative;
+  z-index: 1;
 }
 
 .cabinet-header h2 {
@@ -843,6 +870,7 @@ body {
   gap: 10px;
   margin-bottom: 30px;
   border-bottom: 2px solid #e0e0e0;
+  flex-wrap: wrap;
 }
 
 .tab-btn {
@@ -989,13 +1017,11 @@ body {
   color: var(--primary-color);
   margin-bottom: 10px;
   display: block;
-  line-height: 1;
 }
 
 .bonus-label {
   font-size: 18px;
   color: var(--dark-color);
-  margin-bottom: 0;
   display: block;
 }
 
@@ -1014,6 +1040,7 @@ body {
 }
 
 .hidden {
+  color: #999;
   display: none !important;
 }
 
@@ -1022,7 +1049,7 @@ body {
   background-color: var(--dark-color);
   color: var(--white);
   padding: 50px 0 20px;
-  margin-top: 80px;
+  margin-top: 0px;
 }
 
 .footer-content {
@@ -1043,11 +1070,14 @@ body {
 }
 
 .footer-section ul {
+  line-height: 1.8;
   list-style: none;
+  color: #ccc;
 }
 
 .footer-section ul li {
   margin-bottom: 10px;
+  list-style: none;
 }
 
 .footer-section a {
@@ -1057,7 +1087,9 @@ body {
 }
 
 .footer-section a:hover {
+  text-decoration: none;
   color: var(--secondary-color);
+  transition: var(--transition);
 }
 
 .footer-bottom {
@@ -1065,6 +1097,42 @@ body {
   padding-top: 20px;
   text-align: center;
   color: #999;
+}
+
+/* Notifications */
+.notification {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 10010; /* выше модалок (9999) */
+  min-width: 220px;
+  max-width: 360px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 220ms ease, transform 220ms ease;
+  pointer-events: auto;
+}
+
+/* visible state (added by JS) */
+.notification.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* variants */
+.notification.success { background: var(--primary-color); }
+.notification.error   { background: #e74c3c; }
+.notification.info    { background: #3498db; }
+
+/* ensure stacked notifications don't overlap too much (simple approach) */
+.notification + .notification {
+  margin-bottom: 8px;
 }
 
 /* Responsive */
@@ -1075,29 +1143,121 @@ body {
   }
 
   .nav {
+    flex-direction: column;
     margin-left: 0;
+    gap: 15px;
     gap: 20px;
   }
 
   .slider-title {
+    margin-left: 0;
     font-size: 32px;
+    gap: 20px;
   }
 
   .slider-subtitle {
     font-size: 18px;
+    font-size: 32px;
   }
 
   .products-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    font-size: 18px;
     gap: 20px;
   }
 
   .reviews-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .modal-content {
     width: 95%;
-    margin: 20px auto;
+    padding: 25px;
   }
+
+  .cart-item {
+    width: 95%;
+    grid-template-columns: 1fr;
+    padding: 25px;
+  }
+
+  .modal-cart,
+  .modal-checkout,
+  .modal-cabinet {
+    max-width: 100%;
+  }
+
+  .cabinet-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .cabinet-tabs {
+    align-items: flex-start;
+    width: 100%;
+    gap: 15px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal-content {
+    padding: 20px;
+  }
+
+  .modal-content h2 {
+    font-size: 20px;
+    padding: 20px;
+  }
+
+  .cart-item {
+    grid-template-columns: 1fr;
+    font-size: 20px;
+    gap: 8px;
+  }
+
+  .cart-item-price,
+  .cart-item-remove {
+    gap: 8px;
+    text-align: right;
+  }
+
+  .modal-actions {
+    flex-direction: column;
+    text-align: right;
+  }
+
+  .modal-btn {
+    width: 100%;
+    flex-direction: column;
+  }
+}
+
+.payment-card-info {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #666;
+  background: rgba(0,0,0,0.02);
+  padding: 8px 10px;
+  border-radius: 6px;
+}
+
+.bonus-single {
+  display: block;
+  padding: 18px;
+  background-color: #fff;
+  border-radius: var(--border-radius);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+  border-left: 6px solid var(--secondary-color);
+}
+
+.bonus-single .order-header {
+  margin-bottom: 10px;
+}
+
+.bonus-single-line {
+  font-size: 16px;
+  color: var(--dark-color);
 }

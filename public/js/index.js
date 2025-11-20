@@ -62,8 +62,11 @@ function showNotification(message, type = 'success') {
   notification.textContent = message;
   document.body.appendChild(notification);
 
+  requestAnimationFrame(() => notification.classList.add('show'));
+
   setTimeout(() => {
-    notification.remove();
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 250);
   }, 3000);
 }
 
@@ -337,6 +340,38 @@ async function prepareCheckout() {
       const checkoutTotalElement = document.getElementById('checkoutTotal');
       if (checkoutTotalElement) {
         checkoutTotalElement.textContent = total.toFixed(2) + ' BYN';
+        checkoutTotalElement.dataset.originalAmount = total.toFixed(2);
+      }
+
+      // Показываем раздел бонусов с ограничением
+      const bonusSection = document.getElementById('bonusSection');
+      if (bonusSection) {
+        const userBonus = currentUser.bonus || 0;
+        const maxByAmount = Math.floor(total * 10);
+        const maxAllowed = Math.min(userBonus, maxByAmount);
+        
+        if (userBonus > 0) {
+          bonusSection.innerHTML = `
+            <h3>Использование бонусов</h3>
+            <div style="margin-bottom: 15px; padding: 12px; background-color: var(--light-color); border-radius: 8px;">
+              <p style="margin-bottom: 8px; font-size: 14px;">Доступно бонусов: <strong>${userBonus}</strong> (макс. скидка: ${ (userBonus*0.1).toFixed(2) } BYN)</p>
+              <p style="margin-bottom: 10px; font-size: 12px; color: #666;">1 бонус = 0.10 BYN</p>
+              <div style="display: flex; gap: 10px;">
+                <input type="number" id="bonusInput" min="0" max="${maxAllowed}" value="0" placeholder="Кол-во бонусов" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <button type="button" onclick="updateCheckoutTotal()" style="padding: 8px 16px; background-color: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Применить</button>
+              </div>
+              <p id="bonusMessage" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+              <p id="bonusLimit" style="margin-top: 6px; font-size: 12px; color: #999;">Максимально допустимо бонусов: ${maxAllowed} (по сумме заказа: ${maxByAmount})</p>
+            </div>
+          `;
+        } else {
+          bonusSection.innerHTML = `
+            <h3>Использование бонусов</h3>
+            <div style="padding: 12px; background-color: var(--light-color); border-radius: 8px; color: #999; font-size: 14px;">
+              Бонусов нет
+            </div>
+          `;
+        }
       }
     }
 
@@ -345,7 +380,6 @@ async function prepareCheckout() {
       deliveryAddressElement.value = currentUser.address || '';
     }
 
-    // Загрузить карты перед открытием модального окна
     await loadUserCards();
 
     const checkoutModal = document.getElementById('checkoutModal');
@@ -358,29 +392,43 @@ async function prepareCheckout() {
   }
 }
 
-function closeCheckoutModal() {
-  document.getElementById('checkoutModal').classList.remove('active');
-}
+function updateCheckoutTotal() {
+  const bonusInput = document.getElementById('bonusInput');
+  if (!bonusInput) return;
 
-async function loadUserCards() {
-  const currentUser = JSON.parse(localStorage.getItem('user'));
-  try {
-    const response = await fetch(`/api/cards/${currentUser.id_user}`);
-    const cards = await response.json();
-
-    const select = document.getElementById('paymentCard');
-    select.innerHTML = '<option value="">Выберите карту</option>';
-
-    cards.forEach(card => {
-      const option = document.createElement('option');
-      option.value = card.id_card;
-      const cardDisplay = `**** **** **** ${card.card_number.slice(-4)} | Баланс: ${parseFloat(card.balance).toFixed(2)} BYN`;
-      option.textContent = cardDisplay;
-      select.appendChild(option);
-    });
-  } catch (error) {
-    console.error('Ошибка загрузки карт:', error);
+  let usedBonus = parseInt(bonusInput.value, 10);
+  if (isNaN(usedBonus) || usedBonus < 0) {
+    usedBonus = 0;
+    bonusInput.value = 0;
   }
+
+  const storedUser = JSON.parse(localStorage.getItem('user')) || null;
+  const storedAvailable = storedUser ? parseInt(storedUser.bonus) || 0 : 0;
+
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const originalAmount = parseFloat(checkoutTotalEl?.dataset.originalAmount) || 0;
+  const maxByAmount = Math.floor(originalAmount * 10);
+  const available = Math.min(storedAvailable, maxByAmount);
+
+  if (usedBonus > available) {
+    showNotification('Недостаточно бонусов или превышен лимит по сумме заказа', 'error');
+    usedBonus = available;
+    bonusInput.value = available;
+  }
+
+  const discount = usedBonus * 0.1;
+  const finalAmount = Math.max(0, originalAmount - discount);
+
+  if (checkoutTotalEl) {
+    checkoutTotalEl.textContent = finalAmount.toFixed(2) + ' BYN';
+  }
+
+  const bonusMessage = document.getElementById('bonusMessage');
+  if (bonusMessage) {
+    bonusMessage.textContent = usedBonus > 0 ? `Скидка от бонусов: -${discount.toFixed(2)} BYN` : '';
+  }
+
+  bonusInput.max = available;
 }
 
 async function handleCheckout(event) {
@@ -389,9 +437,23 @@ async function handleCheckout(event) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
   const cardId = document.getElementById('paymentCard').value;
   const deliveryAddress = document.getElementById('deliveryAddress').value;
+  const bonusUsed = parseInt(document.getElementById('bonusInput')?.value) || 0;
+
+  // Валидация: бонусы не превышают сумму
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const originalAmount = parseFloat(checkoutTotalEl?.dataset.originalAmount) || 0;
+  if (bonusUsed * 0.1 > originalAmount) {
+    showNotification('Нельзя использовать бонусов больше, чем сумма заказа', 'error');
+    return;
+  }
 
   if (!cardId) {
     showNotification('Пожалуйста, выберите способ оплаты', 'error');
+    return;
+  }
+
+  if (bonusUsed > currentUser.bonus) {
+    showNotification('Недостаточно бонусов', 'error');
     return;
   }
 
@@ -402,18 +464,31 @@ async function handleCheckout(event) {
       body: JSON.stringify({
         user_id: currentUser.id_user,
         card_id: cardId,
-        delivery_address: deliveryAddress
+        delivery_address: deliveryAddress,
+        bonus_used: bonusUsed
       })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      showNotification('Заказ успешно создан!');
+      showNotification(bonusUsed > 0 ? `Заказ создан! Использовано ${bonusUsed} бонусов` : 'Заказ успешно создан!');
       localStorage.removeItem('cart');
       updateCartCount();
       closeCheckoutModal();
-      
+
+      // Обновляем данные пользователя в client-side
+      try {
+        const userResp = await fetch(`/api/auth/user/${currentUser.id_user}`);
+        if (userResp.ok) {
+          const updatedUser = await userResp.json();
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          if (typeof loadBonusInfo === 'function') loadBonusInfo();
+        }
+      } catch (e) {
+        console.warn('Не удалось обновить данные пользователя после заказа', e);
+      }
+
       setTimeout(() => {
         location.reload();
       }, 1500);
@@ -435,14 +510,19 @@ function showCabinetModal() {
 
   let modal = document.getElementById('cabinetModal');
   if (!modal) {
-    createCabinetModal();
-    modal = document.getElementById('cabinetModal');
+    // Вызываем глобальную функцию из account.js
+    if (typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      modal = document.getElementById('cabinetModal');
+    }
   }
   
-  loadUserOrders();
-  loadBonusInfo();
-  loadUserCards();
-  modal.classList.add('active');
+  if (modal) {
+    loadUserOrders();
+    loadBonusInfo();
+    loadUserCards();
+    modal.classList.add('active');
+  }
 }
 
 function closeCabinetModal() {
@@ -452,12 +532,24 @@ function closeCabinetModal() {
   }
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, btnEl) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-  
-  event.target.classList.add('active');
-  document.getElementById(tabName + 'Tab').classList.remove('hidden');
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+    tab.classList.add('hidden');
+  });
+
+  if (btnEl) btnEl.classList.add('active');
+
+  const tab = document.getElementById(tabName + 'Tab');
+  if (tab) {
+    tab.classList.remove('hidden');
+    tab.classList.add('active');
+  }
+
+  if (tabName === 'bonus' && typeof loadBonusInfo === 'function') {
+    loadBonusInfo();
+  }
 }
 
 async function loadUserOrders() {
@@ -491,95 +583,142 @@ async function loadUserOrders() {
 }
 
 function renderOrderCard(order) {
+  // безопасно получаем список товаров (сервер возвращает items с полями product_name, quantity, price)
   const itemsList = order.items && order.items.length > 0 
-    ? order.items.map(item => `<div class="order-item-detail">• ${item.product_name} x${item.quantity}</div>`).join('')
+    ? order.items.map(item => `<div class="order-item-detail">• ${item.product_name || item.name || 'Товар'} x${item.quantity}</div>`).join('')
     : '<div class="order-item-detail">Товары не указаны</div>';
+
+  // безопасно получаем сумму: пробуем несколько вариантов полей и приводим к числу
+  const totalRaw = order.total_amount ?? order.total_price ?? order.total ?? order.totalAmount;
+  const totalValue = parseFloat(totalRaw) || 0;
+
+  // статус для вывода
+  const statusLabel = order.status === 'completed' ? 'Завершён' : (order.status === 'pending' ? 'В ожидании' : (order.status || 'Неизвестно'));
 
   return `
     <div class="order-card">
       <div class="order-header">
-        <span class="order-number">Заказ #${String(order.id_order).padStart(5, '0')}</span>
-        <span class="order-status ${order.status}">${order.status === 'pending' ? 'В ожидании' : 'Завершён'}</span>
+        <span class="order-number">Заказ #${String(order.id_order || order.id || '').padStart(5, '0')}</span>
+        <span class="order-status ${order.status}">${statusLabel}</span>
       </div>
-      <div class="order-date">${new Date(order.created_at).toLocaleDateString('ru-RU')}</div>
-      <div class="order-address">📍 ${order.delivery_address}</div>
+      <div class="order-date">${order.created_at ? new Date(order.created_at).toLocaleDateString('ru-RU') : ''}</div>
+      <div class="order-address">${order.delivery_address ? `📍 ${order.delivery_address}` : ''}</div>
       <div class="order-items-list">${itemsList}</div>
-      <div class="order-total">Сумма: ${parseFloat(order.total_amount).toFixed(2)} BYN</div>
+      <div class="order-total">Сумма: ${totalValue.toFixed(2)} BYN</div>
     </div>
   `;
 }
 
-async function loadBonusInfo() {
+function repeatOrder(orderId) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
+  if (!currentUser) {
+    showNotification('Пожалуйста, авторизуйтесь', 'error');
+    return;
+  }
+
+  // Получаем детали заказа
+  fetch(`/api/orders/${orderId}`)
+    .then(response => response.json())
+    .then(order => {
+      if (order && order.items) {
+        // Добавляем товары из заказа в корзину
+        const cart = JSON.parse(localStorage.getItem('cart')) || [];
+        order.items.forEach(item => {
+          const cartItem = cart.find(i => i.id === item.product_id);
+          if (cartItem) {
+            // Если товар уже есть в корзине, увеличиваем количество
+            cartItem.quantity += item.quantity;
+          } else {
+            // Иначе добавляем новый товар в корзину
+            cart.push({
+              id: item.product_id,
+              name: item.product_name || item.name,
+              price: item.price,
+              quantity: item.quantity
+            });
+          }
+        });
+
+        // Сохраняем обновленную корзину в локальное хранилище
+        localStorage.setItem('cart', JSON.stringify(cart));
+        updateCartCount();
+        showNotification('Товары из заказа добавлены в корзину', 'success');
+      } else {
+        showNotification('Не удалось получить детали заказа', 'error');
+      }
+    })
+    .catch(error => {
+      console.error('Ошибка при повторном заказе:', error);
+      showNotification('Ошибка подключения', 'error');
+    });
+}
+
+// Review modal handlers
+function showReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  const rating = modal.querySelector('#rating');
+  if (rating) rating.focus();
+}
+
+function closeReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  const form = modal.querySelector('#reviewForm');
+  if (form) form.reset();
+}
+
+async function handleReviewSubmit(event) {
+  event.preventDefault();
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  const ratingEl = modal.querySelector('#rating');
+  const commentEl = modal.querySelector('#comment');
+  const rating = parseInt(ratingEl.value, 10);
+  const comment = (commentEl.value || '').trim();
+
+  if (!rating || comment.length === 0) {
+    showNotification('Пожалуйста, заполните рейтинг и комментарий', 'error');
+    return;
+  }
+
+  const user = JSON.parse(localStorage.getItem('user')) || null;
+  const payload = {
+    id_user: user ? user.id_user : null,
+    rating,
+    comment
+  };
+
   try {
-    const response = await fetch(`/api/auth/user/${currentUser.id_user}`);
-    const userData = await response.json();
-    const bonusAmount = parseFloat(userData.bonus);
-    document.getElementById('bonusAmount').textContent = bonusAmount.toFixed(2);
-  } catch (error) {
-    console.error('Ошибка загрузки бонусов:', error);
-    const bonusAmount = parseFloat(currentUser.bonus);
-    document.getElementById('bonusAmount').textContent = bonusAmount.toFixed(2);
+    const resp = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (resp.ok) {
+      showNotification('Спасибо! Отзыв отправлен.', 'success');
+      closeReviewModal();
+    } else {
+      showNotification(data.message || 'Ошибка при отправке отзыва', 'error');
+    }
+  } catch (err) {
+    console.error('Ошибка отправки отзыва:', err);
+    showNotification('Ошибка подключения', 'error');
   }
 }
 
-function logoutUser() {
-  localStorage.removeItem('user');
-  closeCabinetModal();
-  window.location.href = '/account';
-  showNotification('Вы вышли из аккаунта');
-}
-
-function createCabinetModal() {
-  const modal = document.createElement('div');
-  modal.id = 'cabinetModal';
-  modal.className = 'modal modal-cabinet';
-  modal.innerHTML = `
-    <div class="modal-content modal-cabinet-content">
-      <span class="modal-close" onclick="closeCabinetModal()">&times;</span>
-      
-      <div class="cabinet-header">
-        <h2>Личный кабинет</h2>
-        <button onclick="logoutUser()" class="btn btn-logout">Выход</button>
-      </div>
-
-      <div class="cabinet-tabs">
-        <button class="tab-btn active" onclick="switchTab('orders')">Заказы</button>
-        <button class="tab-btn" onclick="switchTab('history')">История заказов</button>
-        <button class="tab-btn" onclick="switchTab('bonus')">Бонусы</button>
-      </div>
-
-      <div class="tab-content active" id="ordersTab">
-        <h3>Текущие заказы</h3>
-        <div id="currentOrders" class="orders-list"></div>
-      </div>
-
-      <div class="tab-content hidden" id="historyTab">
-        <h3>История заказов</h3>
-        <div id="orderHistory" class="orders-list"></div>
-      </div>
-
-      <div class="tab-content hidden" id="bonusTab">
-        <h3>Мои бонусы</h3>
-        <div class="bonus-info">
-          <div class="bonus-card">
-            <div class="bonus-amount" id="bonusAmount">0</div>
-            <div class="bonus-label">бонусов</div>
-          </div>
-          <p class="bonus-info-text">1 бонус = 10 копеек</p>
-        </div>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeCabinetModal();
-    }
-  });
-}
-
-// Initialize
-showSlide(currentSlideIndex);
-updateCartCount();
+// Закрытие модалки при клике на фон
+document.addEventListener('DOMContentLoaded', () => {
+  const reviewModal = document.getElementById('reviewModal');
+  if (reviewModal) {
+    reviewModal.addEventListener('click', (e) => {
+      if (e.target === reviewModal) {
+        closeReviewModal();
+      }
+    });
+  }
+});

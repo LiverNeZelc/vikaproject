@@ -11,8 +11,11 @@ function showNotification(message, type = 'success') {
   notification.textContent = message;
   document.body.appendChild(notification);
 
+  requestAnimationFrame(() => notification.classList.add('show'));
+
   setTimeout(() => {
-    notification.remove();
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 250);
   }, 3000);
 }
 
@@ -41,11 +44,11 @@ async function handleLogin(event) {
       }, 500);
     } else {
       showNotification(data.message || 'Ошибка входа', 'error');
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Ошибка входа:', error);
     showNotification('Ошибка подключения', 'error');
-  } finally {
     btn.disabled = false;
   }
 }
@@ -89,11 +92,11 @@ async function handleRegister(event) {
       }, 500);
     } else {
       showNotification(data.message || 'Ошибка регистрации', 'error');
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Ошибка регистрации:', error);
     showNotification('Ошибка подключения', 'error');
-  } finally {
     btn.disabled = false;
   }
 }
@@ -141,9 +144,10 @@ async function mergeGuestCart(user) {
     }
   }
 
+  // Редирект на главную — ГАРАНТИРОВАННЫЙ
   setTimeout(() => {
     window.location.href = '/';
-  }, 1500);
+  }, 1000);
 }
 
 // Check if user already logged in

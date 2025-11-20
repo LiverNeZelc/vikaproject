@@ -20,8 +20,11 @@ function showNotification(message, type = 'success') {
   notification.textContent = message;
   document.body.appendChild(notification);
 
+  requestAnimationFrame(() => notification.classList.add('show'));
+
   setTimeout(() => {
-    notification.remove();
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 250);
   }, 3000);
 }
 
@@ -51,11 +54,11 @@ async function handleLogin(event) {
       }, 500);
     } else {
       showNotification(data.message || 'Ошибка входа', 'error');
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Ошибка входа:', error);
     showNotification('Ошибка подключения', 'error');
-  } finally {
     btn.disabled = false;
   }
 }
@@ -100,11 +103,11 @@ async function handleRegister(event) {
       }, 500);
     } else {
       showNotification(data.message || 'Ошибка регистрации', 'error');
+      btn.disabled = false;
     }
   } catch (error) {
     console.error('Ошибка регистрации:', error);
     showNotification('Ошибка подключения', 'error');
-  } finally {
     btn.disabled = false;
   }
 }
@@ -133,7 +136,10 @@ async function mergeGuestCart() {
     }
   }
 
-  showCabinet();
+  // Редирект на главную — ГАРАНТИРОВАННЫЙ
+  setTimeout(() => {
+    window.location.href = '/';
+  }, 1000);
 }
 
 function checkUserStatus() {
@@ -168,23 +174,48 @@ function logoutUser() {
   showNotification('Вы вышли из аккаунта');
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, btnEl) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-  
-  event.target.classList.add('active');
-  document.getElementById(tabName + 'Tab').classList.remove('hidden');
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+    tab.classList.add('hidden');
+  });
+
+  if (btnEl) {
+    btnEl.classList.add('active');
+  }
+
+  const tab = document.getElementById(tabName + 'Tab');
+  if (tab) {
+    tab.classList.remove('hidden');
+    tab.classList.add('active');
+  }
+
+  if (tabName === 'bonus') {
+    loadBonusInfo();
+  }
 }
 
 async function loadUserOrders() {
   try {
-    const response = await fetch(`/api/orders/${currentUser.id_user}`);
+    // получаем актуального пользователя (из localStorage)
+    const user = currentUser || JSON.parse(localStorage.getItem('user'));
+    if (!user) return;
+
+    const response = await fetch(`/api/orders/${user.id_user}`);
     const orders = await response.json();
 
-    const currentOrdersDiv = document.getElementById('currentOrders');
-    const historyDiv = document.getElementById('orderHistory');
+    // Ищем контейнеры внутри модалки, если она создана
+    const modal = document.getElementById('cabinetModal');
+    const currentOrdersDiv = modal ? modal.querySelector('#currentOrders') : document.getElementById('currentOrders');
+    const historyDiv = modal ? modal.querySelector('#orderHistory') : document.getElementById('orderHistory');
 
-    if (orders.length === 0) {
+    if (!currentOrdersDiv || !historyDiv) {
+      console.warn('Контейнеры для заказов не найдены (ни в модалке, ни в глобальном DOM)');
+      return;
+    }
+
+    if (!orders || orders.length === 0) {
       currentOrdersDiv.innerHTML = '<div class="empty-state">Нет активных заказов</div>';
       historyDiv.innerHTML = '<div class="empty-state">История заказов пуста</div>';
       return;
@@ -220,8 +251,95 @@ function renderOrderCard(order) {
 }
 
 async function loadBonusInfo() {
-  const bonusAmount = (currentUser.bonus / 10).toFixed(2);
-  document.getElementById('bonusAmount').textContent = bonusAmount;
+  // получаем актуальные данные пользователя (если есть)
+  const userFromStorage = JSON.parse(localStorage.getItem('user')) || null;
+  if (!userFromStorage) return;
+
+  try {
+    const response = await fetch(`/api/auth/user/${userFromStorage.id_user}`);
+    if (!response.ok) throw new Error('Нет данных пользователя');
+    const userData = await response.json();
+
+    const bonusUnits = parseInt(userData.bonus) || 0;
+    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
+
+    // Если модалка/контейнер не созданы — создаём их
+    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const bonusTab = document.getElementById('bonusTab');
+    const bonusAmountEl = document.getElementById('bonusAmount');
+    const bonusPointsEl = document.getElementById('bonusPoints');
+
+    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
+    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
+
+    if (bonusTab) {
+      let container = bonusTab.querySelector('#bonusContainer');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'bonusContainer';
+        container.className = 'orders-list';
+        container.style.marginTop = '18px';
+        bonusTab.appendChild(container);
+      }
+      container.innerHTML = `
+        <div class="order-card bonus-single">
+          <div class="order-header">
+            <span class="order-number">Бонусный баланс</span>
+            <span class="order-status completed">Актуально</span>
+          </div>
+          <div class="order-items">
+            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Обновим localStorage и текущего пользователя в клиенте
+    currentUser = userData;
+    localStorage.setItem('user', JSON.stringify(userData));
+  } catch (error) {
+    // fallback — берем данные из localStorage, если сервер недоступен
+    const bonusUnits = parseInt(userFromStorage.bonus) || 0;
+    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
+
+    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const bonusTab = document.getElementById('bonusTab');
+    const bonusAmountEl = document.getElementById('bonusAmount');
+    const bonusPointsEl = document.getElementById('bonusPoints');
+
+    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
+    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
+
+    if (bonusTab) {
+      let container = bonusTab.querySelector('#bonusContainer');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'bonusContainer';
+        container.className = 'orders-list';
+        container.style.marginTop = '18px';
+        bonusTab.appendChild(container);
+      }
+      container.innerHTML = `
+        <div class="order-card bonus-single">
+          <div class="order-header">
+            <span class="order-number">Бонусный баланс</span>
+            <span class="order-status completed">Актуально</span>
+          </div>
+          <div class="order-items">
+            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
+          </div>
+        </div>
+      `;
+    }
+  }
 }
 
 async function loadUserCards() {
@@ -230,17 +348,37 @@ async function loadUserCards() {
     const cards = await response.json();
 
     const select = document.getElementById('paymentCard');
+    if (!select) return;
     select.innerHTML = '<option value="">Выберите карту</option>';
 
     cards.forEach(card => {
       const option = document.createElement('option');
       option.value = card.id_card;
-      option.textContent = `${card.cardholder_name} - **** ${card.card_number.slice(-4)}`;
+      option.dataset.balance = parseFloat(card.balance).toFixed(2);
+      option.dataset.last4 = card.card_number.slice(-4);
+      option.textContent = `${card.cardholder_name} • **** ${option.dataset.last4} | Баланс: ${option.dataset.balance} BYN`;
       select.appendChild(option);
     });
+
+    select.addEventListener('change', showSelectedCardInfo);
+    showSelectedCardInfo();
   } catch (error) {
     console.error('Ошибка загрузки карт:', error);
   }
+}
+
+function showSelectedCardInfo() {
+  const select = document.getElementById('paymentCard');
+  const info = document.getElementById('paymentCardInfo');
+  if (!select || !info) return;
+  const opt = select.options[select.selectedIndex];
+  if (!opt || !opt.value) {
+    info.textContent = '';
+    return;
+  }
+  const last4 = opt.dataset.last4 || '----';
+  const balance = opt.dataset.balance || '0.00';
+  info.textContent = `Карта: **** **** **** ${last4} — Баланс: ${parseFloat(balance).toFixed(2)} BYN`;
 }
 
 function updateCartCount() {
@@ -466,6 +604,30 @@ async function prepareCheckout() {
     }).join('');
 
     document.getElementById('checkoutTotal').textContent = total.toFixed(2) + ' BYN';
+    document.getElementById('checkoutTotal').dataset.originalAmount = total.toFixed(2);
+
+    // Ограничение бонусов
+    const bonusSection = document.getElementById('bonusSection');
+    if (bonusSection) {
+      const userBonus = currentUser.bonus || 0;
+      const maxByAmount = Math.floor(total * 10);
+      const maxAllowed = Math.min(userBonus, maxByAmount);
+
+      bonusSection.innerHTML = `
+        <h3>Использование бонусов</h3>
+        <div style="margin-bottom: 15px; padding: 12px; background-color: var(--light-color); border-radius: 8px;">
+          <p style="margin-bottom: 8px; font-size: 14px;">Доступно бонусов: <strong>${userBonus}</strong> (макс. скидка: ${(userBonus*0.1).toFixed(2)} BYN)</p>
+          <p style="margin-bottom: 10px; font-size: 12px; color: #666;">1 бонус = 0.10 BYN</p>
+          <div style="display: flex; gap: 10px;">
+            <input type="number" id="bonusInput" min="0" max="${maxAllowed}" value="0" placeholder="Кол-во бонусов" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+            <button type="button" onclick="updateCheckoutTotal()" style="padding: 8px 16px; background-color: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Применить</button>
+          </div>
+          <p id="bonusMessage" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+          <p id="bonusLimit" style="margin-top: 6px; font-size: 12px; color: #999;">Максимально допустимо бонусов: ${maxAllowed} (по сумме заказа: ${maxByAmount})</p>
+        </div>
+      `;
+    }
+
     document.getElementById('deliveryAddress').value = currentUser.address || '';
 
     document.getElementById('checkoutModal').classList.add('active');
@@ -531,6 +693,15 @@ async function handleCheckout(event) {
 
   const cardId = document.getElementById('paymentCard').value;
   const deliveryAddress = document.getElementById('deliveryAddress').value;
+  const bonusUsed = parseInt(document.getElementById('bonusInput')?.value) || 0;
+
+  // Проверка по сумме
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const originalAmount = parseFloat(checkoutTotalEl?.dataset.originalAmount) || 0;
+  if (bonusUsed * 0.1 > originalAmount) {
+    showNotification('Нельзя использовать бонусов больше, чем сумма заказа', 'error');
+    return;
+  }
 
   if (!cardId) {
     showNotification('Пожалуйста, выберите способ оплаты', 'error');
@@ -544,18 +715,32 @@ async function handleCheckout(event) {
       body: JSON.stringify({
         user_id: currentUser.id_user,
         card_id: cardId,
-        delivery_address: deliveryAddress
+        delivery_address: deliveryAddress,
+        bonus_used: bonusUsed
       })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      showNotification('Заказ успешно создан!');
+      showNotification(bonusUsed > 0 ? `Заказ создан! Использовано ${bonusUsed} бонусов` : 'Заказ успешно создан!');
       localStorage.removeItem('cart');
       updateCartCount();
       closeCheckoutModal();
-      
+
+      // Обновляем user в client-side (чтобы бонусы уменьшились в ЛК)
+      try {
+        const userResp = await fetch(`/api/auth/user/${currentUser.id_user}`);
+        if (userResp.ok) {
+          const updatedUser = await userResp.json();
+          currentUser = updatedUser;
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          loadBonusInfo();
+        }
+      } catch (e) {
+        console.warn('Не удалось обновить данные пользователя после заказа', e);
+      }
+
       setTimeout(() => {
         location.reload();
       }, 1500);
@@ -594,46 +779,59 @@ function closeCabinetModal() {
 }
 
 function createCabinetModal() {
+  // Проверяем, уже ли создана модалка
+  if (document.getElementById('cabinetModal')) {
+    return;
+  }
+
   const modal = document.createElement('div');
   modal.id = 'cabinetModal';
   modal.className = 'modal modal-cabinet';
-  modal.innerHTML = `
-    <div class="modal-content modal-cabinet-content">
-      <span class="modal-close" onclick="closeCabinetModal()">&times;</span>
-      
-      <div class="cabinet-header">
-        <h2>Личный кабинет</h2>
-        <button onclick="logoutUser()" class="btn btn-logout">Выход</button>
-      </div>
+  
+  const modalContent = document.createElement('div');
+  modalContent.className = 'modal-content';
+  
+  modalContent.innerHTML = `
+    <span class="modal-close" onclick="closeCabinetModal()">&times;</span>
+    
+    <div class="cabinet-header">
+      <h2>Личный кабинет</h2>
+      <button onclick="logoutUser()" class="btn btn-logout">Выход</button>
+    </div>
 
-      <div class="cabinet-tabs">
-        <button class="tab-btn active" onclick="switchTab('orders')">Заказы</button>
-        <button class="tab-btn" onclick="switchTab('history')">История заказов</button>
-        <button class="tab-btn" onclick="switchTab('bonus')">Бонусы</button>
-      </div>
+    <div class="cabinet-tabs">
+      <button class="tab-btn active" onclick="switchTab('orders', this)">Заказы</button>
+      <button class="tab-btn" onclick="switchTab('history', this)">История заказов</button>
+      <button class="tab-btn" onclick="switchTab('bonus', this)">Бонусы</button>
+    </div>
 
-      <div class="tab-content active" id="ordersTab">
-        <h3>Текущие заказы</h3>
-        <div id="currentOrders" class="orders-list"></div>
-      </div>
+    <div class="tab-content active" id="ordersTab">
+      <h3>Текущие заказы</h3>
+      <div id="currentOrders" class="orders-list"></div>
+    </div>
 
-      <div class="tab-content hidden" id="historyTab">
-        <h3>История заказов</h3>
-        <div id="orderHistory" class="orders-list"></div>
-      </div>
+    <div class="tab-content hidden" id="historyTab">
+      <h3>История заказов</h3>
+      <div id="orderHistory" class="orders-list"></div>
+    </div>
 
-      <div class="tab-content hidden" id="bonusTab">
-        <h3>Мои бонусы</h3>
-        <div class="bonus-info">
-          <div class="bonus-card">
-            <div class="bonus-amount" id="bonusAmount">0</div>
-            <div class="bonus-label">BYN в бонусах</div>
-          </div>
-          <p class="bonus-info-text">1 бонус = 0.10 BYN<br>За каждую покупку вы получаете 5% от суммы заказа в виде бонусов</p>
+    <div class="tab-content hidden" id="bonusTab">
+      <h3>Мои бонусы</h3>
+      <div class="bonus-info">
+        <div class="bonus-card">
+          <div class="bonus-amount" id="bonusAmount">0.00</div>
+          <div class="bonus-label">BYN в бонусах</div>
+          <div id="bonusPoints" style="margin-top:8px; font-size:14px; color:#666;">0 бонусов</div>
         </div>
+        <p class="bonus-info-text">1 бонус = 0.10 BYN<br>За каждую покупку вы получаете 20% от суммы заказа в виде бонусов</p>
       </div>
+
+      <!-- новый контейнер, отображается как список заказов (одна карточка) -->
+      <div id="bonusContainer" class="orders-list" style="margin-top:18px;"></div>
     </div>
   `;
+  
+  modal.appendChild(modalContent);
   document.body.appendChild(modal);
 
   modal.addEventListener('click', (e) => {
@@ -663,7 +861,7 @@ function createCartModal() {
 
       <div class="modal-actions">
         <button class="modal-btn modal-btn-secondary" onclick="closeCartModal()">Продолжить покупки</button>
-        <button class="modal-btn modal-btn-primary" onclick="goToCheckout()">Оформить заказ</button>
+        <button class="modal-btn modal-btn_primary" onclick="goToCheckout()">Оформить заказ</button>
       </div>
     </div>
   `;

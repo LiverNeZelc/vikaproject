@@ -1,10 +1,10 @@
 let allProducts = [];
 let filteredProducts = [];
 
-const productsGrid = document.getElementById('productsGrid');
-const searchInput = document.getElementById('searchInput');
-const categoryFilter = document.getElementById('categoryFilter');
-const sortSelect = document.getElementById('sortSelect');
+let productsGrid;
+let searchInput;
+let categoryFilter;
+let sortSelect;
 
 // Load products from database
 async function loadProducts() {
@@ -75,8 +75,13 @@ function showNotification(message, type = 'success') {
   notification.textContent = message;
   document.body.appendChild(notification);
 
+  // trigger enter animation
+  requestAnimationFrame(() => notification.classList.add('show'));
+
+  // remove after 3s with fade-out
   setTimeout(() => {
-    notification.remove();
+    notification.classList.remove('show');
+    setTimeout(() => notification.remove(), 250);
   }, 3000);
 }
 
@@ -99,7 +104,7 @@ function addToCart(productId, productName, price) {
 
     localStorage.setItem('cart', JSON.stringify(cart));
     updateCartCount();
-    showNotification(`"${productName}" добавлен в корзину!`);
+    showNotification(`"Товар ${productName}" добавлен в корзину!`);
   }
 }
 
@@ -154,7 +159,7 @@ async function addToUserCart(productId, productName, price) {
     }
     
     updateCartCount();
-    showNotification(`"${productName}" добавлен в корзину!`);
+    showNotification(`"Товар ${productName}" добавлен в корзину!`);
   } catch (error) {
     console.error('Ошибка добавления товара в корзину:', error);
     showNotification('Ошибка при добавлении товара', 'error');
@@ -344,6 +349,30 @@ async function prepareCheckout() {
       const checkoutTotalElement = document.getElementById('checkoutTotal');
       if (checkoutTotalElement) {
         checkoutTotalElement.textContent = total.toFixed(2) + ' BYN';
+        checkoutTotalElement.dataset.originalAmount = total.toFixed(2);
+      }
+
+      // Показываем раздел бонусов (и задаём max для input по сумме и по балансу)
+      const bonusSection = document.getElementById('bonusSection');
+      if (bonusSection) {
+        const userBonus = currentUser.bonus || 0;
+        // максимум бонусов, который покрывает сумму = floor(total / 0.1) = floor(total * 10)
+        const maxByAmount = Math.floor(total * 10);
+        const maxAllowed = Math.min(userBonus, maxByAmount);
+
+        bonusSection.innerHTML = `
+          <h3>Использование бонусов</h3>
+          <div style="margin-bottom: 15px; padding: 12px; background-color: var(--light-color); border-radius: 8px;">
+            <p style="margin-bottom: 8px; font-size: 14px;">Доступно бонусов: <strong>${userBonus}</strong> (макс. скидка: ${(userBonus*0.1).toFixed(2)} BYN)</p>
+            <p style="margin-bottom: 10px; font-size: 12px; color: #666;">1 бонус = 0.10 BYN</p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="number" id="bonusInput" min="0" max="${maxAllowed}" value="0" placeholder="Кол-во бонусов для использования" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+              <button type="button" onclick="updateCheckoutTotal()" style="padding: 8px 16px; background-color: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Применить</button>
+            </div>
+            <p id="bonusMessage" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
+            <p id="bonusLimit" style="margin-top: 6px; font-size: 12px; color: #999;">Максимально допустимо бонусов: ${maxAllowed} (по сумме заказа: ${maxByAmount})</p>
+          </div>
+        `;
       }
     }
 
@@ -365,29 +394,47 @@ async function prepareCheckout() {
   }
 }
 
-function closeCheckoutModal() {
-  document.getElementById('checkoutModal').classList.remove('active');
-}
+function updateCheckoutTotal() {
+  const bonusInput = document.getElementById('bonusInput');
+  if (!bonusInput) return;
 
-async function loadUserCards() {
-  const currentUser = JSON.parse(localStorage.getItem('user'));
-  try {
-    const response = await fetch(`/api/cards/${currentUser.id_user}`);
-    const cards = await response.json();
-
-    const select = document.getElementById('paymentCard');
-    select.innerHTML = '<option value="">Выберите карту</option>';
-
-    cards.forEach(card => {
-      const option = document.createElement('option');
-      option.value = card.id_card;
-      const cardDisplay = `**** **** **** ${card.card_number.slice(-4)} | Баланс: ${parseFloat(card.balance).toFixed(2)} BYN`;
-      option.textContent = cardDisplay;
-      select.appendChild(option);
-    });
-  } catch (error) {
-    console.error('Ошибка загрузки карт:', error);
+  // валидируем введённое количество бонусов
+  let usedBonus = parseInt(bonusInput.value, 10);
+  if (isNaN(usedBonus) || usedBonus < 0) {
+    usedBonus = 0;
+    bonusInput.value = 0;
   }
+
+  // получаем доступные бонусы из currentUser (localStorage)
+  const storedUser = JSON.parse(localStorage.getItem('user')) || null;
+  const storedAvailable = storedUser ? parseInt(storedUser.bonus) || 0 : 0;
+
+  // получаем оригинальную сумму (BYN) и считаем максимум бонусов по сумме
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const originalAmount = parseFloat(checkoutTotalEl?.dataset.originalAmount) || 0;
+  const maxByAmount = Math.floor(originalAmount * 10);
+  const available = Math.min(storedAvailable, maxByAmount);
+
+  if (usedBonus > available) {
+    showNotification('Недостаточно бонусов или превышен лимит по сумме заказа', 'error');
+    usedBonus = available;
+    bonusInput.value = available;
+  }
+
+  const discount = usedBonus * 0.1;
+  const finalAmount = Math.max(0, originalAmount - discount);
+
+  if (checkoutTotalEl) {
+    checkoutTotalEl.textContent = finalAmount.toFixed(2) + ' BYN';
+  }
+
+  const bonusMessage = document.getElementById('bonusMessage');
+  if (bonusMessage) {
+    bonusMessage.textContent = usedBonus > 0 ? `Скидка от бонусов: -${discount.toFixed(2)} BYN` : '';
+  }
+
+  // обновим атрибут max на случай изменения суммы
+  bonusInput.max = Math.min(storedAvailable, maxByAmount);
 }
 
 async function handleCheckout(event) {
@@ -396,6 +443,15 @@ async function handleCheckout(event) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
   const cardId = document.getElementById('paymentCard').value;
   const deliveryAddress = document.getElementById('deliveryAddress').value;
+  const bonusUsed = parseInt(document.getElementById('bonusInput')?.value) || 0;
+
+  // Проверка: бонусы не больше суммы
+  const checkoutTotalEl = document.getElementById('checkoutTotal');
+  const originalAmount = parseFloat(checkoutTotalEl?.dataset.originalAmount) || 0;
+  if (bonusUsed * 0.1 > originalAmount) {
+    showNotification('Нельзя использовать бонусов больше, чем сумма заказа', 'error');
+    return;
+  }
 
   if (!cardId) {
     showNotification('Пожалуйста, выберите способ оплаты', 'error');
@@ -409,27 +465,35 @@ async function handleCheckout(event) {
       body: JSON.stringify({
         user_id: currentUser.id_user,
         card_id: cardId,
-        delivery_address: deliveryAddress
+        delivery_address: deliveryAddress,
+        bonus_used: bonusUsed
       })
     });
 
     const data = await response.json();
 
     if (response.ok) {
-      showNotification('Заказ успешно создан!');
+      const message = bonusUsed > 0 
+        ? `Заказ создан! Использовано ${bonusUsed} бонусов (-${(bonusUsed * 0.1).toFixed(2)} BYN)` 
+        : 'Заказ успешно создан!';
+      showNotification(message);
       localStorage.removeItem('cart');
       updateCartCount();
       closeCheckoutModal();
-      
-      // Обновляем данные пользователя с новым бонусом
-      const updatedUser = await fetch(`/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: currentUser.email
-        })
-      }).catch(() => null);
-      
+
+      // Обновляем данные пользователя (чтобы бонусы уменьшились в UI)
+      try {
+        const userResp = await fetch(`/api/auth/user/${currentUser.id_user}`);
+        if (userResp.ok) {
+          const updatedUser = await userResp.json();
+          localStorage.setItem('user', JSON.stringify(updatedUser));
+          if (typeof loadBonusInfo === 'function') loadBonusInfo();
+          if (typeof updateCartCount === 'function') updateCartCount();
+        }
+      } catch (e) {
+        console.warn('Не удалось обновить данные пользователя после заказа', e);
+      }
+
       setTimeout(() => {
         location.reload();
       }, 1500);
@@ -451,14 +515,19 @@ function showCabinetModal() {
 
   let modal = document.getElementById('cabinetModal');
   if (!modal) {
-    createCabinetModal();
-    modal = document.getElementById('cabinetModal');
+    // Вызываем глобальную функцию из account.js
+    if (typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      modal = document.getElementById('cabinetModal');
+    }
   }
   
-  loadUserOrders();
-  loadBonusInfo();
-  loadUserCards();
-  modal.classList.add('active');
+  if (modal) {
+    loadUserOrders();
+    loadBonusInfo();
+    loadUserCards();
+    modal.classList.add('active');
+  }
 }
 
 function closeCabinetModal() {
@@ -468,24 +537,49 @@ function closeCabinetModal() {
   }
 }
 
-function switchTab(tabName) {
+function switchTab(tabName, btnEl) {
+  // убрать активность у всех кнопок и контента
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-  
-  event.target.classList.add('active');
-  document.getElementById(tabName + 'Tab').classList.remove('hidden');
+  document.querySelectorAll('.tab-content').forEach(tab => {
+    tab.classList.remove('active');
+    tab.classList.add('hidden');
+  });
+
+  // пометить нажатую кнопку
+  if (btnEl) btnEl.classList.add('active');
+
+  // показать и пометить активным нужный таб
+  const tab = document.getElementById(tabName + 'Tab');
+  if (tab) {
+    tab.classList.remove('hidden');
+    tab.classList.add('active');
+  }
+
+  // доп.логика для бонусов
+  if (tabName === 'bonus' && typeof loadBonusInfo === 'function') {
+    loadBonusInfo();
+  }
 }
 
 async function loadUserOrders() {
   const currentUser = JSON.parse(localStorage.getItem('user'));
+  if (!currentUser) return;
+
   try {
     const response = await fetch(`/api/orders/${currentUser.id_user}`);
     const orders = await response.json();
 
-    const currentOrdersDiv = document.getElementById('currentOrders');
-    const historyDiv = document.getElementById('orderHistory');
+    // Сначала пытаемся найти контейнеры внутри модалки (если она создана)
+    const modal = document.getElementById('cabinetModal');
+    const currentOrdersDiv = modal ? modal.querySelector('#currentOrders') : document.getElementById('currentOrders');
+    const historyDiv = modal ? modal.querySelector('#orderHistory') : document.getElementById('orderHistory');
 
-    if (orders.length === 0) {
+    if (!currentOrdersDiv || !historyDiv) {
+      console.warn('Контейнеры для заказов не найдены (ни в модалке, ни в глобальном DOM)');
+      return;
+    }
+
+    if (!orders || orders.length === 0) {
       currentOrdersDiv.innerHTML = '<div class="empty-state">Нет активных заказов</div>';
       historyDiv.innerHTML = '<div class="empty-state">История заказов пуста</div>';
       return;
@@ -527,35 +621,100 @@ function renderOrderCard(order) {
 
 async function loadBonusInfo() {
   const currentUser = JSON.parse(localStorage.getItem('user'));
+  if (!currentUser) return;
+
   console.log('🔍 loadBonusInfo - текущий пользователь:', currentUser);
-  
+
   try {
     const response = await fetch(`/api/auth/user/${currentUser.id_user}`);
     console.log('📡 Ответ сервера статус:', response.status);
-    
+
     const userData = await response.json();
     console.log('📊 Данные пользователя от сервера:', userData);
-    
-    const bonusAmount = parseFloat(userData.bonus);
-    console.log('💰 Распарсен бонус:', bonusAmount);
-    
-    const bonusElement = document.getElementById('bonusAmount');
-    console.log('🎯 Элемент bonusAmount:', bonusElement);
-    
-    if (bonusElement) {
-      bonusElement.textContent = bonusAmount.toFixed(2);
-      console.log('✅ Бонус успешно установлен:', bonusAmount.toFixed(2));
-    } else {
-      console.error('❌ Элемент bonusAmount не найден в DOM');
+
+    const bonusUnits = parseInt(userData.bonus) || 0;
+    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
+
+    // Если модалка/контейнер не созданы — создаём их
+    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      await new Promise(r => setTimeout(r, 0));
     }
+
+    const bonusTab = document.getElementById('bonusTab');
+    const bonusAmountEl = document.getElementById('bonusAmount');
+    const bonusPointsEl = document.getElementById('bonusPoints');
+
+    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
+    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
+
+    // Рендерим карточку прямо внутри вкладки (чтобы точно была видна)
+    if (bonusTab) {
+      let container = bonusTab.querySelector('#bonusContainer');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'bonusContainer';
+        container.className = 'orders-list';
+        container.style.marginTop = '18px';
+        bonusTab.appendChild(container);
+      }
+      container.innerHTML = `
+        <div class="order-card bonus-single">
+          <div class="order-header">
+            <span class="order-number">Бонусный баланс</span>
+            <span class="order-status completed">Актуально</span>
+          </div>
+          <div class="order-items">
+            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
+          </div>
+        </div>
+      `;
+    } else {
+      console.warn('❗ bonusTab не найден в DOM');
+    }
+
+    // Обновим localStorage/currentUser
+    localStorage.setItem('user', JSON.stringify(userData));
   } catch (error) {
     console.error('❌ Ошибка загрузки бонусов:', error);
-    const bonusAmount = parseFloat(currentUser.bonus);
-    console.log('📌 Использую бонус из localStorage:', bonusAmount);
-    
-    const bonusElement = document.getElementById('bonusAmount');
-    if (bonusElement) {
-      bonusElement.textContent = bonusAmount.toFixed(2);
+
+    // fallback из localStorage
+    const stored = JSON.parse(localStorage.getItem('user')) || {};
+    const bonusUnits = parseInt(stored.bonus) || 0;
+    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
+
+    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
+      createCabinetModal();
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const bonusTab = document.getElementById('bonusTab');
+    const bonusAmountEl = document.getElementById('bonusAmount');
+    const bonusPointsEl = document.getElementById('bonusPoints');
+
+    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
+    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
+
+    if (bonusTab) {
+      let container = bonusTab.querySelector('#bonusContainer');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'bonusContainer';
+        container.className = 'orders-list';
+        container.style.marginTop = '18px';
+        bonusTab.appendChild(container);
+      }
+      container.innerHTML = `
+        <div class="order-card bonus-single">
+          <div class="order-header">
+            <span class="order-number">Бонусный баланс</span>
+            <span class="order-status completed">Актуально</span>
+          </div>
+          <div class="order-items">
+            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
+          </div>
+        </div>
+      `;
     }
   }
 }
@@ -567,67 +726,145 @@ function logoutUser() {
   showNotification('Вы вышли из аккаунта');
 }
 
-function createCabinetModal() {
-  const modal = document.createElement('div');
-  modal.id = 'cabinetModal';
-  modal.className = 'modal modal-cabinet';
-  modal.style.display = 'none';
-  
-  const modalContent = document.createElement('div');
-  modalContent.className = 'modal-content modal-cabinet-content';
-  
-  modalContent.innerHTML = `
-    <span class="modal-close" onclick="closeCabinetModal()">&times;</span>
-    
-    <div class="cabinet-header">
-      <h2>Личный кабинет</h2>
-      <button onclick="logoutUser()" class="btn btn-logout">Выход</button>
-    </div>
+document.addEventListener('DOMContentLoaded', () => {
+  // назначаем элементы после построения DOM
+  productsGrid = document.getElementById('productsGrid');
+  searchInput = document.getElementById('searchInput');
+  categoryFilter = document.getElementById('categoryFilter');
+  sortSelect = document.getElementById('sortSelect');
 
-    <div class="cabinet-tabs">
-      <button class="tab-btn active" onclick="switchTab('orders')">Заказы</button>
-      <button class="tab-btn" onclick="switchTab('history')">История заказов</button>
-      <button class="tab-btn" onclick="switchTab('bonus')">Бонусы</button>
-    </div>
+  if (!productsGrid) {
+    console.warn('Элемент productsGrid не найден в DOM — каталог не будет отображён на этой странице.');
+    return;
+  }
 
-    <div class="tab-content active" id="ordersTab">
-      <h3>Текущие заказы</h3>
-      <div id="currentOrders" class="orders-list"></div>
-    </div>
+  // навесим обработчики только если элементы существуют
+  if (searchInput) searchInput.addEventListener('input', applyFiltersAndSort);
+  if (categoryFilter) categoryFilter.addEventListener('change', applyFiltersAndSort);
+  if (sortSelect) sortSelect.addEventListener('change', applyFiltersAndSort);
 
-    <div class="tab-content hidden" id="historyTab">
-      <h3>История заказов</h3>
-      <div id="orderHistory" class="orders-list"></div>
-    </div>
-
-    <div class="tab-content hidden" id="bonusTab">
-      <h3>Мои бонусы</h3>
-      <div class="bonus-info">
-        <div class="bonus-card">
-          <div class="bonus-amount" id="bonusAmount">0</div>
-          <div class="bonus-label">бонусов</div>
-        </div>
-        <p class="bonus-info-text">1 бонус = 10 копеек</p>
-      </div>
-    </div>
-  `;
-  
-  modal.appendChild(modalContent);
-  document.body.appendChild(modal);
-  console.log('✅ Modal кабинета создан и добавлен в DOM');
-
-  modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-      closeCabinetModal();
-    }
+  // безопасно загружаем товары и обновляем счётчик корзины
+  loadProducts().catch(err => {
+    console.error('Ошибка при загрузке товаров (init):', err);
+    productsGrid.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">Ошибка загрузки товаров</p>';
   });
+
+  // updateCartCount() используется в других скриптах — вызываем, если функция доступна
+  try {
+    if (typeof updateCartCount === 'function') updateCartCount();
+  } catch (e) {
+    console.warn('updateCartCount недоступна при инициализации каталога');
+  }
+});
+
+async function loadUserCards() {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  try {
+    const response = await fetch(`/api/cards/${currentUser.id_user}`);
+    const cards = await response.json();
+
+    const select = document.getElementById('paymentCard');
+    if (!select) return;
+    select.innerHTML = '<option value="">Выберите карту</option>';
+
+    cards.forEach(card => {
+      const option = document.createElement('option');
+      option.value = card.id_card;
+      option.dataset.balance = parseFloat(card.balance).toFixed(2);
+      option.dataset.last4 = card.card_number.slice(-4);
+      const cardDisplay = `**** **** **** ${option.dataset.last4} | Баланс: ${option.dataset.balance} BYN`;
+      option.textContent = cardDisplay;
+      select.appendChild(option);
+    });
+
+    // показа информации о выбранной карте
+    select.addEventListener('change', showSelectedCardInfo);
+    showSelectedCardInfo();
+  } catch (error) {
+    console.error('Ошибка загрузки карт:', error);
+  }
 }
 
-// Event listeners
-searchInput.addEventListener('input', applyFiltersAndSort);
-categoryFilter.addEventListener('change', applyFiltersAndSort);
-sortSelect.addEventListener('change', applyFiltersAndSort);
+function showSelectedCardInfo() {
+  const select = document.getElementById('paymentCard');
+  const info = document.getElementById('paymentCardInfo');
+  if (!select || !info) return;
+  const opt = select.options[select.selectedIndex];
+  if (!opt || !opt.value) {
+    info.textContent = '';
+    return;
+  }
+  const last4 = opt.dataset.last4 || '----';
+  const balance = opt.dataset.balance || '0.00';
+  info.textContent = `Карта: **** **** **** ${last4} — Баланс: ${parseFloat(balance).toFixed(2)} BYN`;
+}
 
-// Initial load
-loadProducts();
-updateCartCount();
+// Review modal handlers (catalog)
+function showReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  const rating = modal.querySelector('#rating');
+  if (rating) rating.focus();
+}
+
+function closeReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  const form = modal.querySelector('#reviewForm');
+  if (form) form.reset();
+}
+
+async function handleReviewSubmit(event) {
+  event.preventDefault();
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  const ratingEl = modal.querySelector('#rating');
+  const commentEl = modal.querySelector('#comment');
+  const rating = parseInt(ratingEl.value, 10);
+  const comment = (commentEl.value || '').trim();
+
+  if (!rating || comment.length === 0) {
+    showNotification('Пожалуйста, заполните рейтинг и комментарий', 'error');
+    return;
+  }
+
+  const user = JSON.parse(localStorage.getItem('user')) || null;
+  const payload = {
+    id_user: user ? user.id_user : null,
+    rating,
+    comment
+  };
+
+  try {
+    const resp = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (resp.ok) {
+      showNotification('Спасибо! Отзыв отправлен.', 'success');
+      closeReviewModal();
+    } else {
+      showNotification(data.message || 'Ошибка при отправке отзыва', 'error');
+    }
+  } catch (err) {
+    console.error('Ошибка отправки отзыва:', err);
+    showNotification('Ошибка подключения', 'error');
+  }
+}
+
+// Закрытие модалки при клике на фон
+document.addEventListener('DOMContentLoaded', () => {
+  const reviewModal = document.getElementById('reviewModal');
+  if (reviewModal) {
+    reviewModal.addEventListener('click', (e) => {
+      if (e.target === reviewModal) {
+        closeReviewModal();
+      }
+    });
+  }
+});
