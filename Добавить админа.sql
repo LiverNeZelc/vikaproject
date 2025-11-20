@@ -1,0 +1,2 @@
+INSERT INTO public.users(email, password_hash, first_name, last_name, phone, address, role, bonus)
+	VALUES ('admin@test.by', '$2b$10$qrRaC0SLmb5eUdELaJ5z5eugjwq.4hTptQqNsDlhq30fa2EsEmXni', 'Админ', 'Вика', '88005553535', 'blabla', 'admin', 0);

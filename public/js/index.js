@@ -71,6 +71,14 @@ function showNotification(message, type = 'success') {
 }
 
 function showCartModal() {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  
+  // Админ не может открыть корзину
+  if (currentUser && currentUser.role === 'admin') {
+    showNotification('Администраторы не могут использовать корзину', 'error');
+    return;
+  }
+
   let modal = document.getElementById('cartModal');
   if (!modal) {
     createCartModal();
@@ -508,9 +516,15 @@ function showCabinetModal() {
     return;
   }
 
+  // Если админ, открываем админ-модалку
+  if (currentUser.role === 'admin') {
+    showAdminModal();
+    return;
+  }
+
+  // Иначе обычная модалка кабинета
   let modal = document.getElementById('cabinetModal');
   if (!modal) {
-    // Вызываем глобальную функцию из account.js
     if (typeof createCabinetModal === 'function') {
       createCabinetModal();
       modal = document.getElementById('cabinetModal');
@@ -561,13 +575,10 @@ async function loadUserOrders() {
     const currentOrdersDiv = document.getElementById('currentOrders');
     const historyDiv = document.getElementById('orderHistory');
 
-    if (orders.length === 0) {
-      currentOrdersDiv.innerHTML = '<div class="empty-state">Нет активных заказов</div>';
-      historyDiv.innerHTML = '<div class="empty-state">История заказов пуста</div>';
-      return;
-    }
+    if (!currentOrdersDiv || !historyDiv) return;
 
-    const currentOrders = orders.filter(o => o.status !== 'completed');
+    // Разделяем заказы на текущие (pending) и историю (completed)
+    const currentOrders = orders.filter(o => o.status === 'pending');
     const historyOrders = orders.filter(o => o.status === 'completed');
 
     currentOrdersDiv.innerHTML = currentOrders.length === 0 
@@ -595,6 +606,10 @@ function renderOrderCard(order) {
   // статус для вывода
   const statusLabel = order.status === 'completed' ? 'Завершён' : (order.status === 'pending' ? 'В ожидании' : (order.status || 'Неизвестно'));
 
+  const deleteBtn = order.status === 'completed' 
+    ? `<button class="order-delete-btn" onclick="deleteOrder(${order.id_order})" title="Удалить заказ из истории">🗑️ Удалить</button>`
+    : '';
+
   return `
     <div class="order-card">
       <div class="order-header">
@@ -605,52 +620,37 @@ function renderOrderCard(order) {
       <div class="order-address">${order.delivery_address ? `📍 ${order.delivery_address}` : ''}</div>
       <div class="order-items-list">${itemsList}</div>
       <div class="order-total">Сумма: ${totalValue.toFixed(2)} BYN</div>
+      ${deleteBtn}
     </div>
   `;
 }
 
-function repeatOrder(orderId) {
+async function deleteOrder(orderId) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
-  if (!currentUser) {
-    showNotification('Пожалуйста, авторизуйтесь', 'error');
+  
+  if (!confirm('Вы уверены? Этот заказ будет удалён из истории безвозвратно.')) {
     return;
   }
 
-  // Получаем детали заказа
-  fetch(`/api/orders/${orderId}`)
-    .then(response => response.json())
-    .then(order => {
-      if (order && order.items) {
-        // Добавляем товары из заказа в корзину
-        const cart = JSON.parse(localStorage.getItem('cart')) || [];
-        order.items.forEach(item => {
-          const cartItem = cart.find(i => i.id === item.product_id);
-          if (cartItem) {
-            // Если товар уже есть в корзине, увеличиваем количество
-            cartItem.quantity += item.quantity;
-          } else {
-            // Иначе добавляем новый товар в корзину
-            cart.push({
-              id: item.product_id,
-              name: item.product_name || item.name,
-              price: item.price,
-              quantity: item.quantity
-            });
-          }
-        });
-
-        // Сохраняем обновленную корзину в локальное хранилище
-        localStorage.setItem('cart', JSON.stringify(cart));
-        updateCartCount();
-        showNotification('Товары из заказа добавлены в корзину', 'success');
-      } else {
-        showNotification('Не удалось получить детали заказа', 'error');
-      }
-    })
-    .catch(error => {
-      console.error('Ошибка при повторном заказе:', error);
-      showNotification('Ошибка подключения', 'error');
+  try {
+    const response = await fetch(`/api/orders/${orderId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.id_user })
     });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showNotification('Заказ удалён из истории', 'success');
+      loadUserOrders();
+    } else {
+      showNotification(data.message || 'Ошибка удаления заказа', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления заказа:', error);
+    showNotification('Ошибка удаления заказа', 'error');
+  }
 }
 
 // Review modal handlers
@@ -721,4 +721,63 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+});
+
+// Загрузить опубликованные отзывы
+async function loadPublishedReviews() {
+  try {
+    const response = await fetch('/api/reviews-published');
+    const reviews = await response.json();
+    
+    if (reviews && reviews.length > 0) {
+      renderScrollingReviews(reviews);
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки отзывов:', error);
+  }
+}
+
+function renderScrollingReviews(reviews) {
+  // Создаём контейнер если его нет
+  let reviewsSection = document.querySelector('.reviews-scroll-wrapper');
+  
+  if (!reviewsSection) {
+    reviewsSection = document.createElement('section');
+    reviewsSection.className = 'reviews-scroll-wrapper';
+    const standardReviewsSection = document.querySelector('.reviews-section');
+    
+    if (standardReviewsSection) {
+      standardReviewsSection.parentNode.insertBefore(reviewsSection, standardReviewsSection);
+    } else {
+      document.querySelector('.slider-section').parentNode.appendChild(reviewsSection);
+    }
+  }
+
+  // Дублируем отзывы для бесконечной прокрутки
+  const duplicatedReviews = [...reviews, ...reviews];
+  
+  const scrollContainer = document.createElement('div');
+  scrollContainer.className = 'reviews-scroll-container';
+  
+  scrollContainer.innerHTML = duplicatedReviews.map(review => {
+    const stars = '⭐'.repeat(review.rating);
+    return `
+      <div class="review-scroll-card">
+        <div class="review-scroll-header">
+          <span class="review-scroll-author">${review.author_name}</span>
+          <span class="review-scroll-rating">${stars}</span>
+        </div>
+        <p class="review-scroll-text">"${review.comment}"</p>
+      </div>
+    `;
+  }).join('');
+  
+  reviewsSection.innerHTML = '';
+  reviewsSection.appendChild(scrollContainer);
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  loadPublishedReviews();
+  updateCartCount();
 });

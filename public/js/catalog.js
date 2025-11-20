@@ -26,14 +26,14 @@ function renderProducts(products) {
   }
 
   productsGrid.innerHTML = products.map(product => `
-    <div class="product-card">
+    <div class="product-card" onclick="showProductModal(${product.id_product}, '${product.name.replace(/'/g, "\\'")}', '${product.image_url}', ${product.price}, ${product.quantity_in_stock}, '${product.description.replace(/'/g, "\\'")}')" style="cursor: pointer;">
       <img src="${product.image_url}" alt="${product.name}" class="product-image">
       <div class="product-info">
         <h3 class="product-name">${product.name}</h3>
         <p class="product-description">${product.description}</p>
         <div class="product-price">${parseFloat(product.price).toFixed(2)} BYN</div>
         <p class="product-stock">Осталось: ${product.quantity_in_stock} шт.</p>
-        <button class="add-to-cart-btn" ${product.quantity_in_stock === 0 ? 'disabled' : ''} onclick="addToCart(${product.id_product}, '${product.name.replace(/'/g, "\\'")}', ${product.price})">
+        <button class="add-to-cart-btn" ${product.quantity_in_stock === 0 ? 'disabled' : ''} onclick="event.stopPropagation(); addToCart(${product.id_product}, '${product.name.replace(/'/g, "\\'")}', ${product.price})">
           ${product.quantity_in_stock === 0 ? 'Нет в наличии' : 'В корзину'}
         </button>
       </div>
@@ -87,6 +87,12 @@ function showNotification(message, type = 'success') {
 
 function addToCart(productId, productName, price) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
+  
+  // Админ не может добавлять товары в корзину
+  if (currentUser && currentUser.role === 'admin') {
+    showNotification('Администраторы не могут добавлять товары в корзину', 'error');
+    return;
+  }
   
   if (currentUser) {
     // Авторизованный пользователь - добавляем в БД
@@ -191,6 +197,14 @@ async function fetchUserCart() {
 }
 
 function showCartModal() {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  
+  // Админ не может открыть корзину
+  if (currentUser && currentUser.role === 'admin') {
+    showNotification('Администраторы не могут использовать корзину', 'error');
+    return;
+  }
+
   let modal = document.getElementById('cartModal');
   if (!modal) {
     createCartModal();
@@ -513,9 +527,15 @@ function showCabinetModal() {
     return;
   }
 
+  // Если админ, открываем админ-модалку
+  if (currentUser.role === 'admin') {
+    showAdminModal();
+    return;
+  }
+
+  // Иначе обычная модалка кабинета
   let modal = document.getElementById('cabinetModal');
   if (!modal) {
-    // Вызываем глобальную функцию из account.js
     if (typeof createCabinetModal === 'function') {
       createCabinetModal();
       modal = document.getElementById('cabinetModal');
@@ -563,13 +583,10 @@ function switchTab(tabName, btnEl) {
 
 async function loadUserOrders() {
   const currentUser = JSON.parse(localStorage.getItem('user'));
-  if (!currentUser) return;
-
   try {
     const response = await fetch(`/api/orders/${currentUser.id_user}`);
     const orders = await response.json();
 
-    // Сначала пытаемся найти контейнеры внутри модалки (если она создана)
     const modal = document.getElementById('cabinetModal');
     const currentOrdersDiv = modal ? modal.querySelector('#currentOrders') : document.getElementById('currentOrders');
     const historyDiv = modal ? modal.querySelector('#orderHistory') : document.getElementById('orderHistory');
@@ -579,13 +596,8 @@ async function loadUserOrders() {
       return;
     }
 
-    if (!orders || orders.length === 0) {
-      currentOrdersDiv.innerHTML = '<div class="empty-state">Нет активных заказов</div>';
-      historyDiv.innerHTML = '<div class="empty-state">История заказов пуста</div>';
-      return;
-    }
-
-    const currentOrders = orders.filter(o => o.status !== 'completed');
+    // Разделяем заказы на текущие (pending) и историю (completed)
+    const currentOrders = orders.filter(o => o.status === 'pending');
     const historyOrders = orders.filter(o => o.status === 'completed');
 
     currentOrdersDiv.innerHTML = currentOrders.length === 0 
@@ -605,6 +617,10 @@ function renderOrderCard(order) {
     ? order.items.map(item => `<div class="order-item-detail">• ${item.product_name} x${item.quantity}</div>`).join('')
     : '<div class="order-item-detail">Товары не указаны</div>';
 
+  const deleteBtn = order.status === 'completed' 
+    ? `<button class="order-delete-btn" onclick="deleteOrder(${order.id_order})" title="Удалить заказ из истории">🗑️ Удалить</button>`
+    : '';
+
   return `
     <div class="order-card">
       <div class="order-header">
@@ -615,116 +631,178 @@ function renderOrderCard(order) {
       <div class="order-address">📍 ${order.delivery_address}</div>
       <div class="order-items-list">${itemsList}</div>
       <div class="order-total">Сумма: ${parseFloat(order.total_amount).toFixed(2)} BYN</div>
+      ${deleteBtn}
     </div>
   `;
 }
 
-async function loadBonusInfo() {
+async function deleteOrder(orderId) {
   const currentUser = JSON.parse(localStorage.getItem('user'));
-  if (!currentUser) return;
-
-  console.log('🔍 loadBonusInfo - текущий пользователь:', currentUser);
+  
+  if (!confirm('Вы уверены? Этот заказ будет удалён из истории безвозвратно.')) {
+    return;
+  }
 
   try {
-    const response = await fetch(`/api/auth/user/${currentUser.id_user}`);
-    console.log('📡 Ответ сервера статус:', response.status);
+    const response = await fetch(`/api/orders/${orderId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.id_user })
+    });
 
-    const userData = await response.json();
-    console.log('📊 Данные пользователя от сервера:', userData);
+    const data = await response.json();
 
-    const bonusUnits = parseInt(userData.bonus) || 0;
-    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
-
-    // Если модалка/контейнер не созданы — создаём их
-    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
-      createCabinetModal();
-      await new Promise(r => setTimeout(r, 0));
-    }
-
-    const bonusTab = document.getElementById('bonusTab');
-    const bonusAmountEl = document.getElementById('bonusAmount');
-    const bonusPointsEl = document.getElementById('bonusPoints');
-
-    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
-    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
-
-    // Рендерим карточку прямо внутри вкладки (чтобы точно была видна)
-    if (bonusTab) {
-      let container = bonusTab.querySelector('#bonusContainer');
-      if (!container) {
-        container = document.createElement('div');
-        container.id = 'bonusContainer';
-        container.className = 'orders-list';
-        container.style.marginTop = '18px';
-        bonusTab.appendChild(container);
-      }
-      container.innerHTML = `
-        <div class="order-card bonus-single">
-          <div class="order-header">
-            <span class="order-number">Бонусный баланс</span>
-            <span class="order-status completed">Актуально</span>
-          </div>
-          <div class="order-items">
-            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
-          </div>
-        </div>
-      `;
+    if (response.ok) {
+      showNotification('Заказ удалён из истории', 'success');
+      loadUserOrders();
     } else {
-      console.warn('❗ bonusTab не найден в DOM');
+      showNotification(data.message || 'Ошибка удаления заказа', 'error');
     }
-
-    // Обновим localStorage/currentUser
-    localStorage.setItem('user', JSON.stringify(userData));
   } catch (error) {
-    console.error('❌ Ошибка загрузки бонусов:', error);
-
-    // fallback из localStorage
-    const stored = JSON.parse(localStorage.getItem('user')) || {};
-    const bonusUnits = parseInt(stored.bonus) || 0;
-    const bonusInByn = (bonusUnits * 0.1).toFixed(2);
-
-    if (!document.getElementById('bonusTab') && typeof createCabinetModal === 'function') {
-      createCabinetModal();
-      await new Promise(r => setTimeout(r, 0));
-    }
-
-    const bonusTab = document.getElementById('bonusTab');
-    const bonusAmountEl = document.getElementById('bonusAmount');
-    const bonusPointsEl = document.getElementById('bonusPoints');
-
-    if (bonusAmountEl) bonusAmountEl.textContent = bonusInByn;
-    if (bonusPointsEl) bonusPointsEl.textContent = `${bonusUnits} бонусов`;
-
-    if (bonusTab) {
-      let container = bonusTab.querySelector('#bonusContainer');
-      if (!container) {
-        container = document.createElement('div');
-        container.id = 'bonusContainer';
-        container.className = 'orders-list';
-        container.style.marginTop = '18px';
-        bonusTab.appendChild(container);
-      }
-      container.innerHTML = `
-        <div class="order-card bonus-single">
-          <div class="order-header">
-            <span class="order-number">Бонусный баланс</span>
-            <span class="order-status completed">Актуально</span>
-          </div>
-          <div class="order-items">
-            <div class="bonus-single-line">Доступно: <strong>${bonusUnits} бонусов</strong> — ${bonusInByn} BYN</div>
-          </div>
-        </div>
-      `;
-    }
+    console.error('Ошибка удаления заказа:', error);
+    showNotification('Ошибка удаления заказа', 'error');
   }
 }
 
-function logoutUser() {
-  localStorage.removeItem('user');
-  closeCabinetModal();
-  window.location.href = '/account';
-  showNotification('Вы вышли из аккаунта');
+function showAdminModal() {
+  const modal = document.getElementById('adminModal');
+  if (!modal) {
+    createAdminModal();
+  }
+  const adminModal = document.getElementById('adminModal');
+  if (adminModal) {
+    adminModal.classList.add('active');
+  }
 }
+
+function closeAdminModal() {
+  const modal = document.getElementById('adminModal');
+  if (modal) {
+    modal.classList.remove('active');
+  }
+}
+
+async function handleProductUpdate(event, productId) {
+  event.preventDefault();
+  const modal = document.getElementById('adminModal');
+  if (!modal) return;
+
+  const formData = new FormData(modal.querySelector('form'));
+  const payload = Object.fromEntries(formData.entries());
+
+  try {
+    const response = await fetch(`/api/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      showNotification('Товар обновлён', 'success');
+      closeAdminModal();
+      loadProducts();
+    } else {
+      showNotification(data.message || 'Ошибка обновления товара', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка обновления товара:', error);
+    showNotification('Ошибка обновления товара', 'error');
+  }
+}
+
+async function handleProductDelete(productId) {
+  if (!confirm('Вы уверены? Этот товар будет удалён навсегда.')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      showNotification('Товар удалён', 'success');
+      loadProducts();
+    } else {
+      showNotification(data.message || 'Ошибка удаления товара', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления товара:', error);
+    showNotification('Ошибка удаления товара', 'error');
+  }
+}
+
+function showReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.add('active');
+  const rating = modal.querySelector('#rating');
+  if (rating) rating.focus();
+}
+
+function closeReviewModal() {
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  modal.classList.remove('active');
+  const form = modal.querySelector('#reviewForm');
+  if (form) form.reset();
+}
+
+async function handleReviewSubmit(event) {
+  event.preventDefault();
+  const modal = document.getElementById('reviewModal');
+  if (!modal) return;
+  const ratingEl = modal.querySelector('#rating');
+  const commentEl = modal.querySelector('#comment');
+  const rating = parseInt(ratingEl.value, 10);
+  const comment = (commentEl.value || '').trim();
+
+  if (!rating || comment.length === 0) {
+    showNotification('Пожалуйста, заполните рейтинг и комментарий', 'error');
+    return;
+  }
+
+  const user = JSON.parse(localStorage.getItem('user')) || null;
+  const payload = {
+    id_user: user ? user.id_user : null,
+    rating,
+    comment
+  };
+
+  try {
+    const resp = await fetch('/api/reviews', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await resp.json();
+    if (resp.ok) {
+      showNotification('Спасибо! Отзыв отправлен.', 'success');
+      closeReviewModal();
+    } else {
+      showNotification(data.message || 'Ошибка при отправке отзыва', 'error');
+    }
+  } catch (err) {
+    console.error('Ошибка отправки отзыва:', err);
+    showNotification('Ошибка подключения', 'error');
+  }
+}
+
+// Закрытие модалки при клике на фон
+document.addEventListener('DOMContentLoaded', () => {
+  const reviewModal = document.getElementById('reviewModal');
+  if (reviewModal) {
+    reviewModal.addEventListener('click', (e) => {
+      if (e.target === reviewModal) {
+        closeReviewModal();
+      }
+    });
+  }
+});
 
 document.addEventListener('DOMContentLoaded', () => {
   // назначаем элементы после построения DOM
@@ -799,72 +877,69 @@ function showSelectedCardInfo() {
   info.textContent = `Карта: **** **** **** ${last4} — Баланс: ${parseFloat(balance).toFixed(2)} BYN`;
 }
 
-// Review modal handlers (catalog)
-function showReviewModal() {
-  const modal = document.getElementById('reviewModal');
-  if (!modal) return;
+function showProductModal(productId, productName, imageUrl, price, stock, description) {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  
+  let modal = document.getElementById('productDetailModal');
+  if (!modal) {
+    createProductDetailModal();
+    modal = document.getElementById('productDetailModal');
+  }
+
+  // Заполняем данные товара
+  const modalContent = modal.querySelector('.product-detail-content');
+  
+  modalContent.innerHTML = `
+    <img src="${imageUrl}" alt="${productName}" class="product-detail-image">
+    <div class="product-detail-info">
+      <h2 class="product-detail-name">${productName}</h2>
+      <div class="product-detail-price">${parseFloat(price).toFixed(2)} BYN</div>
+      <div class="product-detail-stock">Осталось: ${stock} шт.</div>
+      <div class="product-detail-description">${description}</div>
+      <div class="product-detail-actions">
+        <button class="add-to-cart-btn" ${stock === 0 ? 'disabled' : ''} ${currentUser && currentUser.role === 'admin' ? 'disabled' : ''} onclick="event.stopPropagation(); addToCart(${productId}, '${productName.replace(/'/g, "\\'")}', ${price}); closeProductModal();">
+          ${stock === 0 ? 'Нет в наличии' : (currentUser && currentUser.role === 'admin' ? 'Недоступно для админа' : 'Добавить в корзину')}
+        </button>
+        <button class="modal-btn modal-btn-secondary" onclick="closeProductModal()">Закрыть</button>
+      </div>
+    </div>
+  `;
+
   modal.classList.add('active');
-  const rating = modal.querySelector('#rating');
-  if (rating) rating.focus();
 }
 
-function closeReviewModal() {
-  const modal = document.getElementById('reviewModal');
-  if (!modal) return;
-  modal.classList.remove('active');
-  const form = modal.querySelector('#reviewForm');
-  if (form) form.reset();
+function closeProductModal() {
+  const modal = document.getElementById('productDetailModal');
+  if (modal) {
+    modal.classList.remove('active');
+  }
 }
 
-async function handleReviewSubmit(event) {
-  event.preventDefault();
-  const modal = document.getElementById('reviewModal');
-  if (!modal) return;
-  const ratingEl = modal.querySelector('#rating');
-  const commentEl = modal.querySelector('#comment');
-  const rating = parseInt(ratingEl.value, 10);
-  const comment = (commentEl.value || '').trim();
-
-  if (!rating || comment.length === 0) {
-    showNotification('Пожалуйста, заполните рейтинг и комментарий', 'error');
+function createProductDetailModal() {
+  if (document.getElementById('productDetailModal')) {
     return;
   }
 
-  const user = JSON.parse(localStorage.getItem('user')) || null;
-  const payload = {
-    id_user: user ? user.id_user : null,
-    rating,
-    comment
-  };
+  const modal = document.createElement('div');
+  modal.id = 'productDetailModal';
+  modal.className = 'modal';
+  
+  const modalContent = document.createElement('div');
+  modalContent.className = 'modal-content product-detail-modal';
+  
+  modalContent.innerHTML = `
+    <span class="modal-close" onclick="closeProductModal()">&times;</span>
+    <div class="product-detail-content">
+      <!-- Содержимое будет заполнено динамически -->
+    </div>
+  `;
 
-  try {
-    const resp = await fetch('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+  modal.appendChild(modalContent);
+  document.body.appendChild(modal);
 
-    const data = await resp.json();
-    if (resp.ok) {
-      showNotification('Спасибо! Отзыв отправлен.', 'success');
-      closeReviewModal();
-    } else {
-      showNotification(data.message || 'Ошибка при отправке отзыва', 'error');
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      closeProductModal();
     }
-  } catch (err) {
-    console.error('Ошибка отправки отзыва:', err);
-    showNotification('Ошибка подключения', 'error');
-  }
+  });
 }
-
-// Закрытие модалки при клике на фон
-document.addEventListener('DOMContentLoaded', () => {
-  const reviewModal = document.getElementById('reviewModal');
-  if (reviewModal) {
-    reviewModal.addEventListener('click', (e) => {
-      if (e.target === reviewModal) {
-        closeReviewModal();
-      }
-    });
-  }
-});

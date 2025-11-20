@@ -63,8 +63,11 @@
     </div>
   </section>
 
-  <!-- Reviews Section -->
-  <section class="reviews-section">
+  <!-- Scrolling Reviews Section (будет заполнена JS) -->
+  <!-- Контейнер создаётся динамически, стандартная reviews-section ниже удаляется или скрывается -->
+
+  <!-- Reviews Section (статические отзывы - опционально можно удалить) -->
+  <section class="reviews-section" style="display: none;">
     <div class="container">
       <h2 class="section-title">Отзывы наших клиентов</h2>
       <div class="reviews-grid">
@@ -194,7 +197,6 @@
             <li><a href="/">Главная</a></li>
             <li><a href="/catalog">Каталог</a></li>
             <li><a href="/about">О нас</a></li>
-            <li><a href="/contacts">Контакты</a></li>
           </ul>
         </div>
         <div class="footer-section">
@@ -211,6 +213,7 @@
   </footer>
 
   <script src="/js/account.js"></script>
+  <script src="/js/admin.js"></script>
   <script src="/js/index.js"></script>
 </body>
 </html>

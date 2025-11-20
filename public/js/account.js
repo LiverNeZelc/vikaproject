@@ -49,9 +49,18 @@ async function handleLogin(event) {
       currentUser = data.user;
       localStorage.setItem('user', JSON.stringify(data.user));
       showNotification('Успешный вход!');
-      setTimeout(() => {
-        mergeGuestCart();
-      }, 500);
+      
+      // Если админ, редиректим на главную без слияния корзины
+      if (data.user.role === 'admin') {
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1000);
+      } else {
+        // Для обычного пользователя слияние корзины
+        setTimeout(() => {
+          mergeGuestCart();
+        }, 500);
+      }
     } else {
       showNotification(data.message || 'Ошибка входа', 'error');
       btn.disabled = false;
@@ -136,7 +145,7 @@ async function mergeGuestCart() {
     }
   }
 
-  // Редирект на главную — ГАРАНТИРОВАННЫЙ
+  // Редирект на главную
   setTimeout(() => {
     window.location.href = '/';
   }, 1000);
@@ -197,12 +206,11 @@ function switchTab(tabName, btnEl) {
 }
 
 async function loadUserOrders() {
-  try {
-    // получаем актуального пользователя (из localStorage)
-    const user = currentUser || JSON.parse(localStorage.getItem('user'));
-    if (!user) return;
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  if (!currentUser) return;
 
-    const response = await fetch(`/api/orders/${user.id_user}`);
+  try {
+    const response = await fetch(`/api/orders/${currentUser.id_user}`);
     const orders = await response.json();
 
     // Ищем контейнеры внутри модалки, если она создана
@@ -211,17 +219,12 @@ async function loadUserOrders() {
     const historyDiv = modal ? modal.querySelector('#orderHistory') : document.getElementById('orderHistory');
 
     if (!currentOrdersDiv || !historyDiv) {
-      console.warn('Контейнеры для заказов не найдены (ни в модалке, ни в глобальном DOM)');
+      console.warn('Контейнеры для заказов не найдены');
       return;
     }
 
-    if (!orders || orders.length === 0) {
-      currentOrdersDiv.innerHTML = '<div class="empty-state">Нет активных заказов</div>';
-      historyDiv.innerHTML = '<div class="empty-state">История заказов пуста</div>';
-      return;
-    }
-
-    const currentOrders = orders.filter(o => o.status !== 'completed');
+    // Разделяем заказы на текущие (pending) и историю (completed)
+    const currentOrders = orders.filter(o => o.status === 'pending');
     const historyOrders = orders.filter(o => o.status === 'completed');
 
     currentOrdersDiv.innerHTML = currentOrders.length === 0 
@@ -382,6 +385,14 @@ function showSelectedCardInfo() {
 }
 
 function updateCartCount() {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  
+  // Админ не может видеть корзину
+  if (currentUser && currentUser.role === 'admin') {
+    document.querySelector('.cart-count').textContent = '0';
+    return;
+  }
+  
   if (currentUser) {
     fetchUserCart();
   } else {
@@ -754,21 +765,32 @@ async function handleCheckout(event) {
 }
 
 function showCabinetModal() {
+  const currentUser = JSON.parse(localStorage.getItem('user'));
+  
   if (!currentUser) {
-    showNotification('Пожалуйста, авторизуйтесь', 'error');
+    window.location.href = '/account';
     return;
   }
 
+  // Если админ, открываем админ-модалку
+  if (currentUser.role === 'admin') {
+    showAdminModal();
+    return;
+  }
+
+  // Иначе обычная модалка кабинета
   let modal = document.getElementById('cabinetModal');
   if (!modal) {
     createCabinetModal();
     modal = document.getElementById('cabinetModal');
   }
   
-  loadUserOrders();
-  loadBonusInfo();
-  loadUserCards();
-  modal.classList.add('active');
+  if (modal) {
+    loadUserOrders();
+    loadBonusInfo();
+    loadUserCards();
+    modal.classList.add('active');
+  }
 }
 
 function closeCabinetModal() {
