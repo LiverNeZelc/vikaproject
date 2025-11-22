@@ -252,7 +252,7 @@ function renderProductsForManagement() {
   }
 
   container.innerHTML = filteredProductsForManagement.map(product => `
-    <div class="product-management-card">
+    <div class="product-management-card" id="product-card-${product.id_product}">
       <div class="product-mgmt-header">
         <h3>${product.name}</h3>
         <span style="font-size: 12px; color: #999;">SKU: ${product.sku}</span>
@@ -263,15 +263,20 @@ function renderProductsForManagement() {
       </div>
       <div class="product-mgmt-row">
         <label>Цена:</label>
-        <input type="number" value="${product.price}" step="0.01" id="price_${product.id_product}" class="product-mgmt-input">
+        <input type="number" value="${product.price}" step="0.01" min="0" id="price_${product.id_product}" class="product-mgmt-input">
       </div>
       <div class="product-mgmt-row">
         <label>Количество:</label>
-        <input type="number" value="${product.quantity_in_stock}" id="quantity_${product.id_product}" class="product-mgmt-input">
+        <input type="number" value="${product.quantity_in_stock}" min="0" id="quantity_${product.id_product}" class="product-mgmt-input">
       </div>
-      <button class="modal-btn modal-btn-primary" onclick="updateProduct(${product.id_product})">
-        Обновить товар
-      </button>
+      <div style="display: flex; gap: 10px;">
+        <button class="modal-btn modal-btn-primary" onclick="updateProduct(${product.id_product})" style="flex: 1;">
+          Обновить товар
+        </button>
+        <button class="modal-btn" onclick="deleteProductFromAdmin(${product.id_product})" style="flex: 1; background-color: #e74c3c;">
+          🗑️ Удалить
+        </button>
+      </div>
     </div>
   `).join('');
 }
@@ -283,6 +288,17 @@ async function updateProduct(productId) {
 
   if (!name || !price || quantity === undefined) {
     showNotification('Заполните все поля', 'error');
+    return;
+  }
+
+  // Валидация: цена и количество не могут быть отрицательными
+  if (price < 0) {
+    showNotification('Цена не может быть отрицательной', 'error');
+    return;
+  }
+
+  if (quantity < 0) {
+    showNotification('Количество товара не может быть отрицательным', 'error');
     return;
   }
 
@@ -350,27 +366,27 @@ function createAddProductModal() {
     <form id="addProductForm" onsubmit="handleAddProduct(event)">
       <div class="form-group">
         <label for="newProductName">Название товара:</label>
-        <input type="text" id="newProductName" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
+        <input type="text" id="newProductName" name="name" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
       </div>
 
       <div class="form-group">
         <label for="newProductDescription">Описание:</label>
-        <textarea id="newProductDescription" rows="4" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
+        <textarea id="newProductDescription" name="description" rows="4" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px; resize: vertical;"></textarea>
       </div>
 
       <div class="form-group">
         <label for="newProductPrice">Цена (BYN):</label>
-        <input type="number" id="newProductPrice" step="0.01" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
+        <input type="number" id="newProductPrice" name="price" step="0.01" min="0" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
       </div>
 
       <div class="form-group">
         <label for="newProductQuantity">Количество:</label>
-        <input type="number" id="newProductQuantity" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
+        <input type="number" id="newProductQuantity" name="quantity" min="0" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
       </div>
 
       <div class="form-group">
         <label for="newProductCategory">Категория:</label>
-        <select id="newProductCategory" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
+        <select id="newProductCategory" name="category" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
           <option value="">Выберите категорию</option>
           <option value="tools">Инструменты</option>
           <option value="brushes">Кисти</option>
@@ -378,6 +394,16 @@ function createAddProductModal() {
           <option value="canvas">Холсты</option>
           <option value="paper">Бумага</option>
         </select>
+      </div>
+
+      <div class="form-group">
+        <label for="newProductImage">Загрузить картинку:</label>
+        <div style="display: flex; gap: 10px; align-items: center;">
+          <input type="file" id="newProductImage" accept="image/*" style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: inherit; font-size: 14px;">
+          <button type="button" onclick="uploadProductImage()" style="padding: 10px 20px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; white-space: nowrap;">Загрузить</button>
+        </div>
+        <div id="imageUploadStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
+        <img id="imagePreview" style="margin-top: 10px; max-width: 200px; max-height: 200px; border-radius: 4px; display: none;">
       </div>
 
       <div class="modal-actions">
@@ -397,6 +423,72 @@ function createAddProductModal() {
   });
 }
 
+async function uploadProductImage() {
+  const fileInput = document.getElementById('newProductImage');
+  const statusDiv = document.getElementById('imageUploadStatus');
+  const previewImg = document.getElementById('imagePreview');
+
+  if (!fileInput.files.length) {
+    statusDiv.textContent = 'Пожалуйста, выберите файл';
+    statusDiv.style.color = '#e74c3c';
+    return;
+  }
+
+  const file = fileInput.files[0];
+  
+  // Проверяем размер файла (макс 5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    statusDiv.textContent = 'Файл слишком большой (максимум 5MB)';
+    statusDiv.style.color = '#e74c3c';
+    return;
+  }
+
+  // Проверяем тип файла
+  if (!file.type.startsWith('image/')) {
+    statusDiv.textContent = 'Пожалуйста, загрузите изображение';
+    statusDiv.style.color = '#e74c3c';
+    return;
+  }
+
+  statusDiv.textContent = 'Загрузка...';
+  statusDiv.style.color = '#666';
+
+  const formData = new FormData();
+  formData.append('image', file);
+
+  try {
+    const response = await fetch('/api/upload-image', {
+      method: 'POST',
+      body: formData
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      statusDiv.textContent = '✓ Изображение загружено успешно';
+      statusDiv.style.color = '#27ae60';
+      
+      // Показываем превью
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+
+      // Сохраняем путь загруженной картинки
+      window.uploadedImagePath = data.imagePath;
+    } else {
+      statusDiv.textContent = data.message || 'Ошибка загрузки';
+      statusDiv.style.color = '#e74c3c';
+    }
+  } catch (error) {
+    console.error('Ошибка загрузки изображения:', error);
+    statusDiv.textContent = 'Ошибка при загрузке';
+    statusDiv.style.color = '#e74c3c';
+  }
+}
+
 async function handleAddProduct(event) {
   event.preventDefault();
 
@@ -411,6 +503,21 @@ async function handleAddProduct(event) {
     return;
   }
 
+  // Валидация: цена и количество не могут быть отрицательными
+  if (price < 0) {
+    showNotification('Цена не может быть отрицательной', 'error');
+    return;
+  }
+
+  if (quantity < 0) {
+    showNotification('Количество товара не может быть отрицательным', 'error');
+    return;
+  }
+
+  // Если картинка загружена, используем её путь
+  // Если нет - будет использован путь по умолчанию на сервере
+  const imagePath = window.uploadedImagePath || null;
+
   try {
     const response = await fetch('/api/products', {
       method: 'POST',
@@ -420,7 +527,8 @@ async function handleAddProduct(event) {
         description,
         price,
         quantity_in_stock: quantity,
-        category
+        category,
+        image_path: imagePath
       })
     });
 
@@ -429,6 +537,9 @@ async function handleAddProduct(event) {
     if (response.ok) {
       showNotification('Товар добавлен успешно', 'success');
       document.getElementById('addProductForm').reset();
+      document.getElementById('imageUploadStatus').textContent = '';
+      document.getElementById('imagePreview').style.display = 'none';
+      window.uploadedImagePath = null;
       closeAddProductModal();
       loadProductsForManagement();
     } else {
@@ -943,4 +1054,42 @@ function logoutUser() {
   closeAdminModal();
   window.location.href = '/account';
   showNotification('Вы вышли из аккаунта');
+}
+
+/**
+ * Функции для работы с товарами
+ */
+
+async function deleteProductFromAdmin(productId) {
+  if (!confirm('Вы уверены? Этот товар будет удалён безвозвратно вместе с его картинкой!')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showNotification('Товар удалён успешно', 'success');
+      
+      // Удаляем карточку товара из DOM сразу с анимацией
+      const card = document.getElementById(`product-card-${productId}`);
+      if (card) {
+        card.style.animation = 'fadeOut 0.3s ease-out';
+        setTimeout(() => card.remove(), 300);
+      }
+      
+      // Перезагружаем список в фоне
+      loadProductsForManagement();
+    } else {
+      showNotification(data.message || 'Ошибка удаления товара', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления товара:', error);
+    showNotification('Ошибка удаления товара', 'error');
+  }
 }

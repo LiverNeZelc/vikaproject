@@ -664,6 +664,32 @@ async function deleteOrder(orderId) {
   }
 }
 
+async function deleteProduct(productId) {
+  if (!confirm('Вы уверены? Этот товар будет удалён безвозвратно вместе с его картинкой!')) {
+    return;
+  }
+
+  try {
+    const response = await fetch(`/api/products/${productId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showNotification('Товар удалён успешно', 'success');
+      // Перезагружаем товары - они исчезнут и из каталога, и из админ-панели
+      loadProducts();
+    } else {
+      showNotification(data.message || 'Ошибка удаления товара', 'error');
+    }
+  } catch (error) {
+    console.error('Ошибка удаления товара:', error);
+    showNotification('Ошибка удаления товара', 'error');
+  }
+}
+
 function showAdminModal() {
   const modal = document.getElementById('adminModal');
   if (!modal) {

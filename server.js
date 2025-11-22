@@ -2,6 +2,8 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const bcrypt = require('bcrypt');
+const multer = require('multer');
+const fs = require('fs').promises;
 const { pool, initDb } = require('./db');
 
 const app = express();
@@ -14,6 +16,19 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Настройка multer для загрузки изображений
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Только изображения разрешены'));
+    }
+  }
+});
+
 // Set view engine
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -24,7 +39,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // set to true if using HTTPS
+    secure: false,
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
   },
@@ -49,6 +64,44 @@ app.get('/about', (req, res) => {
 
 app.get('/cart', (req, res) => {
   res.send('Страница корзины');
+});
+
+// API загрузки изображения
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Файл не загружен' });
+    }
+
+    // Получаем текущий максимальный ID
+    const lastProduct = await pool.query('SELECT MAX(id_product) as max_id FROM products');
+    // Следующий ID будет max_id + 1
+    const nextId = (lastProduct.rows[0].max_id || 0) + 1;
+    
+    // Определяем расширение файла
+    const ext = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+    const fileName = `pic${nextId}${ext}`;
+    const filePath = path.join(__dirname, 'public', 'images', fileName);
+
+    // Создаём папку если её нет
+    const imagesDir = path.join(__dirname, 'public', 'images');
+    await fs.mkdir(imagesDir, { recursive: true });
+
+    // Сохраняем файл
+    await fs.writeFile(filePath, req.file.buffer);
+
+    console.log(`✓ Изображение сохранено: ${filePath}`);
+
+    res.json({
+      success: true,
+      imagePath: `/images/${fileName}`,
+      fileName: fileName,
+      message: 'Изображение загружено успешно'
+    });
+  } catch (error) {
+    console.error('Ошибка загрузки изображения:', error);
+    res.status(500).json({ message: 'Ошибка загрузки изображения: ' + error.message });
+  }
 });
 
 // API Routes
@@ -625,11 +678,101 @@ app.delete('/api/orders/:orderId', async (req, res) => {
   }
 });
 
+// Добавить товар (для админа)
+app.post('/api/products', async (req, res) => {
+  try {
+    const { name, description, price, quantity_in_stock, category, image_path } = req.body;
+
+    if (!name || !description || !price || quantity_in_stock === undefined || !category) {
+      return res.status(400).json({ message: 'Заполните все обязательные поля' });
+    }
+
+    // Валидация: цена и количество не могут быть отрицательными
+    if (parseFloat(price) < 0) {
+      return res.status(400).json({ message: 'Цена не может быть отрицательной' });
+    }
+
+    if (parseInt(quantity_in_stock) < 0) {
+      return res.status(400).json({ message: 'Количество товара не может быть отрицательным' });
+    }
+
+    const sku = `SKU${Math.floor(Math.random() * 100000)}`; // временный SKU для вставки
+    
+    // Если картинка уже загружена с временным именем, переименуем её после получения реального ID
+    let finalImageUrl = image_path;
+
+    // Вставляем товар в БД БЕЗ привязки к конкретной картинке
+    const result = await pool.query(
+      `INSERT INTO products (name, description, price, quantity_in_stock, category, sku, image_url, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
+       RETURNING id_product, name, description, price, quantity_in_stock, category, sku, image_url`,
+      [name, description, parseFloat(price), parseInt(quantity_in_stock), category, sku, image_path || `/images/pic${1}.jpg`]
+    );
+
+    const productId = result.rows[0].id_product;
+    console.log(`✓ Товар добавлен с ID: ${productId}`);
+
+    // ЕСЛИ картинка загружена, переименовываем её с правильным ID товара
+    if (image_path && image_path.includes('/images/pic')) {
+      try {
+        // Извлекаем временный номер из пути (например, pic123.jpg -> 123)
+        const tempMatch = image_path.match(/pic(\d+)\.(jpg|png|jpeg|webp)/i);
+        if (tempMatch) {
+          const tempId = tempMatch[1];
+          const ext = tempMatch[2];
+          
+          const oldPath = path.join(__dirname, 'public', `images/pic${tempId}.${ext}`);
+          const newPath = path.join(__dirname, 'public', `images/pic${productId}.${ext}`);
+          
+          // Переименовываем файл
+          await fs.rename(oldPath, newPath);
+          finalImageUrl = `/images/pic${productId}.${ext}`;
+          
+          // Обновляем image_url в БД с правильным путём
+          await pool.query(
+            'UPDATE products SET image_url = $1 WHERE id_product = $2',
+            [finalImageUrl, productId]
+          );
+          
+          console.log(`✓ Картинка переименована: ${oldPath} -> ${newPath}`);
+        }
+      } catch (renameError) {
+        console.warn(`⚠ Ошибка переименования картинки: ${renameError.message}`);
+        // Продолжаем, даже если переименование не удалось
+      }
+    }
+
+    // Получаем финальные данные товара
+    const finalProduct = await pool.query(
+      'SELECT id_product, name, description, price, quantity_in_stock, category, sku, image_url FROM products WHERE id_product = $1',
+      [productId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Товар добавлен успешно',
+      product: finalProduct.rows[0]
+    });
+  } catch (error) {
+    console.error('Ошибка добавления товара:', error);
+    res.status(500).json({ error: 'Ошибка добавления товара: ' + error.message });
+  }
+});
+
 // Обновить товар (для админа)
 app.put('/api/products/:productId', async (req, res) => {
   try {
     const { productId } = req.params;
     const { name, description, price, quantity_in_stock, category } = req.body;
+
+    // Валидация: цена и количество не могут быть отрицательными
+    if (price !== undefined && parseFloat(price) < 0) {
+      return res.status(400).json({ message: 'Цена не может быть отрицательной' });
+    }
+
+    if (quantity_in_stock !== undefined && parseInt(quantity_in_stock) < 0) {
+      return res.status(400).json({ message: 'Количество товара не может быть отрицательным' });
+    }
 
     let query = 'UPDATE products SET ';
     const updates = [];
@@ -646,11 +789,11 @@ app.put('/api/products/:productId', async (req, res) => {
     }
     if (price !== undefined) {
       updates.push(`price = $${paramCount++}`);
-      values.push(price);
+      values.push(parseFloat(price));
     }
     if (quantity_in_stock !== undefined) {
       updates.push(`quantity_in_stock = $${paramCount++}`);
-      values.push(quantity_in_stock);
+      values.push(parseInt(quantity_in_stock));
     }
     if (category !== undefined) {
       updates.push(`category = $${paramCount++}`);
@@ -678,36 +821,52 @@ app.put('/api/products/:productId', async (req, res) => {
   }
 });
 
-// Добавить товар (для админа)
-app.post('/api/products', async (req, res) => {
+// Удалить товар (для админа)
+app.delete('/api/products/:productId', async (req, res) => {
   try {
-    const { name, description, price, quantity_in_stock, category } = req.body;
+    const { productId } = req.params;
 
-    if (!name || !description || !price || quantity_in_stock === undefined || !category) {
-      return res.status(400).json({ message: 'Заполните все обязательные поля' });
-    }
-
-    // Получаем следующий ID для генерации SKU
-    const lastProduct = await pool.query('SELECT MAX(id_product) as max_id FROM products');
-    const nextId = (lastProduct.rows[0].max_id || 0) + 1;
-    const sku = `SKU${nextId}`;
-    const imageUrl = `/images/pic${nextId}.jpg`;
-
-    const result = await pool.query(
-      `INSERT INTO products (name, description, price, quantity_in_stock, category, sku, image_url, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, true)
-       RETURNING id_product, name, description, price, quantity_in_stock, category, sku, image_url`,
-      [name, description, price, quantity_in_stock, category, sku, imageUrl]
+    // Получаем информацию о товаре (чтобы узнать путь картинки)
+    const productResult = await pool.query(
+      'SELECT id_product, image_url FROM products WHERE id_product = $1',
+      [productId]
     );
 
-    res.json({
-      success: true,
-      message: 'Товар добавлен успешно',
-      product: result.rows[0]
-    });
+    if (productResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Товар не найден' });
+    }
+
+    const product = productResult.rows[0];
+
+    // Удаляем товар из БД
+    const deleteResult = await pool.query(
+      'DELETE FROM products WHERE id_product = $1 RETURNING id_product',
+      [productId]
+    );
+
+    if (deleteResult.rowCount === 0) {
+      return res.status(404).json({ message: 'Ошибка при удалении товара' });
+    }
+
+    // Удаляем картинку с диска если она существует
+    if (product.image_url && product.image_url.startsWith('/images/')) {
+      try {
+        const fileName = product.image_url.split('/').pop();
+        const filePath = path.join(__dirname, 'public', 'images', fileName);
+        
+        // Проверяем, существует ли файл и удаляем его
+        await fs.unlink(filePath);
+        console.log(`✓ Картинка удалена: ${filePath}`);
+      } catch (fileError) {
+        console.warn(`⚠ Ошибка удаления картинки: ${fileError.message}`);
+        // Продолжаем, даже если удаление файла не удалось
+      }
+    }
+
+    res.json({ success: true, message: 'Товар удалён успешно' });
   } catch (error) {
-    console.error('Ошибка добавления товара:', error);
-    res.status(500).json({ error: 'Ошибка добавления товара' });
+    console.error('Ошибка удаления товара:', error);
+    res.status(500).json({ error: 'Ошибка удаления товара' });
   }
 });
 

@@ -577,6 +577,17 @@ body {
   }
 }
 
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
 .modal-close {
   /* немного смещаем внутрь и повышаем z-index — видна над содержимым, но не накрывает logout */
   position: absolute;
